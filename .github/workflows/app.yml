@@ -1,0 +1,30 @@
+name: App Build
+on:
+  push:
+    branches: [main]
+    paths: ['app/**']
+  pull_request:
+    paths: ['app/**']
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run app:lint
+      - run: npm run app:typecheck
+
+      # TODO (Fase 1 — Fechamento da V1): habilitar o build real via EAS
+      # quando EXPO_TOKEN existir nos secrets do repositório.
+      #
+      # - name: EAS Build (Android APK)
+      #   run: npx eas-cli build --platform android --profile preview --non-interactive
+      #   working-directory: app
+      #   env:
+      #     EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}

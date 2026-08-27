@@ -1,0 +1,35 @@
+# Env
+.env
+.env.local
+*.env.local
+backend/.env
+app/.env
+
+# Node
+node_modules/
+npm-debug.log*
+dist/
+build/
+
+# Backend (NestJS / Prisma)
+backend/dist/
+backend/prisma/*.db
+
+# App (Expo)
+app/.expo/
+app/dist/
+app/web-build/
+app/*.jks
+app/*.p8
+app/*.p12
+app/*.key
+app/*.mobileprovision
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+.VSCodeCounter/
+
+# Logs
+*.log

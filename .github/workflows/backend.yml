@@ -1,0 +1,38 @@
+name: Backend CI/CD
+on:
+  push:
+    branches: [main]
+    paths: ['backend/**']
+  pull_request:
+    paths: ['backend/**']
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run backend:lint
+      - run: npm run backend:test
+      - run: npm run backend:build
+      - name: Scan de segredos vazados
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # TODO (Fase 1 — Fechamento da V1): habilitar migrations + deploy real
+      # quando o projeto Supabase e o serviço Railway/Render existirem.
+      #
+      # - name: Rodar migrations (Prisma)
+      #   run: npx prisma migrate deploy
+      #   working-directory: backend
+      #   env:
+      #     DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # - name: Deploy no Railway
+      #   run: railway up --service backend
+      #   env:
+      #     RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
