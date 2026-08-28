@@ -3,7 +3,7 @@ services:
     name: corrida-app-backend
     runtime: node
     plan: free
-    buildCommand: npm ci --include=dev && npm run build --workspace=backend
+    buildCommand: npm ci --include=dev && npm run build --workspace=backend && echo "--- dist/ apos build ---" && ls -la backend/dist
     startCommand: cd backend && npx prisma migrate deploy && node dist/main
     envVars:
       - key: NPM_CONFIG_PRODUCTION
