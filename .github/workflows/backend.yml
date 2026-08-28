@@ -9,6 +9,11 @@ on:
 jobs:
   test-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      # `prisma generate` roda no postinstall e exige DATABASE_URL resolvível
+      # (prisma.config.ts usa env('DATABASE_URL')), mesmo sem conectar de fato.
+      # Usa o secret real quando existir; senão cai num valor dummy só p/ o generate.
+      DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://dummy:dummy@localhost:5432/dummy' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
