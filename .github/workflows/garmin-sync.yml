@@ -1,0 +1,24 @@
+name: Trigger Garmin Sync
+
+# Dispara o sync manual (POST /sync/garmin) via HTTP em vez de depender
+# do cron interno (@nestjs/schedule) do backend. No plano free do Render
+# o serviço "dorme" após ~15 min sem tráfego, e o cron interno não
+# dispara se o processo estiver dormindo nesse horário. Uma requisição
+# HTTP externa acorda o serviço e garante o sync mesmo assim.
+on:
+  schedule:
+    - cron: '0 10 * * *' # 7h BRT (UTC-3)
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /sync/garmin
+        run: |
+          curl --fail --show-error --retry 3 --retry-delay 30 \
+            -X POST "$BACKEND_URL/sync/garmin" \
+            -H "Authorization: Bearer $API_KEY"
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          API_KEY: ${{ secrets.API_KEY }}
