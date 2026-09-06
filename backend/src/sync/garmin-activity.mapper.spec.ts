@@ -54,7 +54,7 @@ describe('mapearAtividadeParaTreinoRealizado', () => {
       averageHR: 145.6,
       maxHR: 170,
       elevationGain: 55,
-    } as any);
+    });
 
     expect(resultado.garminActivityId).toBe('123');
     expect(resultado.fonte).toBe('garmin');

@@ -34,14 +34,15 @@ Backend é obrigatório (não dá para fazer "tudo local no celular") porque a i
 ### 3.1 Contexto (importante para não reinventar a abordagem)
 
 - A API **oficial** (Garmin Connect Developer Program) só é liberada para empresas parceiras aprovadas — não existe caminho de acesso individual via conta de desenvolvedor.
-- Caminho usado para uso pessoal: lib **não-oficial** que autentica com e-mail/senha do Garmin Connect, ex. pacote npm `garmin-connect`. Funciona como login normal do app oficial, mas é automatizado.
+- Caminho usado para uso pessoal: lib **não-oficial** que autentica com e-mail/senha do Garmin Connect. Funciona como login normal do app oficial, mas é automatizado.
 - Isso está fora dos Termos de Uso do Garmin (acesso automatizado), embora seja um padrão amplamente usado por projetos pessoais. Risco real é baixo; pior cenário comum é a lib quebrar após mudança no site da Garmin, exigindo update de dependência — não banimento de conta.
 - Decisão do projeto: aceitar esse risco (RNF05), mitigando com sincronização limitada a 1x/dia + trigger manual, nunca polling agressivo.
+- **Implementação (set/2026):** as libs Node não-oficiais (`garmin-connect`, `@gooin/garmin-connect`) pararam de conseguir autenticar depois de uma mudança no fluxo de login do Garmin. A lib Python `garminconnect` (cyberjunky/python-garminconnect, mantida ativamente) já foi corrigida para o novo fluxo — validada manualmente contra a conta real. Por isso `GarminService` delega a autenticação a um subprocesso Python (`backend/garmin_client/session.py`, `backend/requirements.txt`), mantido vivo por sessão e conversando com o Nest via stdin/stdout (uma linha JSON por comando/resposta). A venv é criada automaticamente no `postinstall` do backend (`backend/package.json`), então roda no mesmo serviço do Render sem precisar de uma segunda aplicação — se a preparação do Python falhar no build, a sincronização Garmin fica indisponível (erro tratado, RNF12) mas o resto do backend continua funcionando normalmente.
 
 ### 3.2 Fluxo de sincronização
 
 1. Credenciais Garmin (`GARMIN_EMAIL`, `GARMIN_PASSWORD`) apenas em variável de ambiente — nunca no código, nunca no banco em texto puro.
-2. Job `@Cron(process.env.GARMIN_SYNC_CRON)` — padrão `0 7 * * *` (7h, configurável) — chama `garmin-connect`, busca atividades novas (`getActivities`) desde a última sincronização.
+2. Job `@Cron(process.env.GARMIN_SYNC_CRON)` — padrão `0 7 * * *` (7h, configurável) — chama `GarminService`, que busca atividades novas via o subprocesso Python (ver §3.1) desde a última sincronização.
 3. Para cada atividade de corrida: extrai data, distância, duração, pace médio, FC média/máxima, elevação, `activityId` (chave de idempotência, RF14).
 4. Busca também os splits da atividade (`getActivitySplits` ou equivalente) → popula `treino_realizado_intervalo` (dados equivalentes à tela "Intervals" do app Garmin: Warm Up, Run, Recovery...).
 5. Salva `treino_realizado`, tenta casar com `treino_previsto` da mesma data (RF15, regra em `DATA_MODEL.md`).
@@ -175,7 +176,7 @@ corrida-app/
 │   │   ├── semanas/
 │   │   ├── treinos/              # treino_previsto + treino_realizado + intervalos
 │   │   ├── provas/
-│   │   ├── garmin/                # GarminService (lib garmin-connect) + cron
+│   │   ├── garmin/                # GarminService (subprocesso Python) + cron
 │   │   ├── import/                # parser CSV/JSON
 │   │   ├── auth/                  # guard de API key
 │   │   ├── prisma/                # PrismaService + schema.prisma

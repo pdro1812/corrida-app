@@ -1,7 +1,6 @@
-import { IActivity } from 'garmin-connect/dist/garmin/types/activity';
-import { GarminLapDTO } from '../garmin/garmin.types';
+import { GarminAtividadeDTO, GarminLapDTO } from '../garmin/garmin.types';
 
-export function ehAtividadeDeCorrida(atividade: IActivity): boolean {
+export function ehAtividadeDeCorrida(atividade: GarminAtividadeDTO): boolean {
   return (
     atividade.activityType?.typeKey?.toLowerCase().includes('running') ?? false
   );
@@ -36,7 +35,7 @@ export interface TreinoRealizadoImportado {
 }
 
 export function mapearAtividadeParaTreinoRealizado(
-  atividade: IActivity,
+  atividade: GarminAtividadeDTO,
 ): TreinoRealizadoImportado {
   return {
     garminActivityId: String(atividade.activityId),

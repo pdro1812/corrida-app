@@ -16,7 +16,7 @@ Uso 100% pessoal. Não haverá outros usuários, não vai para a Play Store, nã
 | Backend | NestJS, TypeScript |
 | ORM | Prisma |
 | Banco | PostgreSQL (Supabase) |
-| Integração externa | Garmin Connect via lib não-oficial `garmin-connect` (npm) — ver `docs/ARCHITECTURE.md` §3 |
+| Integração externa | Garmin Connect via lib não-oficial `garminconnect` (Python, chamada como subprocesso pelo backend) — ver `docs/ARCHITECTURE.md` §3 |
 | Sync | `@nestjs/schedule` (cron 1x/dia, configurável + trigger manual) |
 | Infra | Backend no Railway ou Render, build do APK via EAS Build |
 | CI/CD | GitHub Actions — ver `docs/ARCHITECTURE.md` §6 |
@@ -51,7 +51,8 @@ docs/       especificação completa (ler sob demanda, ver abaixo)
 ## Comandos
 
 ```bash
-# Backend
+# Backend (precisa de Python 3 instalado — a venv é criada automaticamente
+# no `npm install`/postinstall, ver backend/requirements.txt)
 cd backend && npm run start:dev     # dev server
 cd backend && npm run test          # testes
 cd backend && npm run lint

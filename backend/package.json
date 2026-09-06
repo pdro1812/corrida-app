@@ -6,7 +6,8 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "postinstall": "prisma generate",
+    "postinstall": "prisma generate && npm run setup:garmin-python",
+    "setup:garmin-python": "(python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt) || echo 'aviso: não foi possível preparar o ambiente Python do Garmin — sync do Garmin ficará indisponível até isso ser corrigido'",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
@@ -33,7 +34,6 @@
     "class-validator": "^0.15.1",
     "cron": "^4.4.0",
     "csv-parse": "^7.0.2",
-    "garmin-connect": "^1.6.2",
     "multer": "^2.2.0",
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",

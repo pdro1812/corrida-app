@@ -76,7 +76,7 @@ export class SyncService implements OnModuleInit {
         }
 
         const intervalos =
-          atividade.lapCount > 1
+          (atividade.lapCount ?? 0) > 1
             ? mapearSplitsParaIntervalos(
                 await this.garminService.buscarSplitsDaAtividade(
                   atividade.activityId,
