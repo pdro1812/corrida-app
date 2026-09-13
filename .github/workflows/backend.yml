@@ -15,7 +15,14 @@ jobs:
       # Usa o secret real quando existir; senão cai num valor dummy só p/ o generate.
       DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://dummy:dummy@localhost:5432/dummy' }}
     steps:
+      # fetch-depth: 0 (histórico completo) — o gitleaks-action roda `git log`
+      # sobre o histórico local; com o clone raso padrão (depth 1) ele não
+      # acha o commit pai e trata a árvore inteira como "adicionada" no
+      # commit atual, gerando falso positivo em qualquer segredo antigo já
+      # existente no repo (ex: token de exemplo do boilerplate do Nest).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
