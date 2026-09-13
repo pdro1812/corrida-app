@@ -107,6 +107,15 @@ CREATE TABLE prova (
   resultado_pace TEXT,
   concluida BOOLEAN DEFAULT false
 );
+
+-- Cache do token de sessão OAuth do Garmin (lib `garth`, ver ARCHITECTURE.md §3).
+-- Linha única (id fixo em 1) — evita login completo usuário/senha a cada
+-- restart do subprocesso Python.
+CREATE TABLE garmin_sessao (
+  id INT PRIMARY KEY DEFAULT 1,
+  token_store TEXT NOT NULL,
+  atualizado_em TIMESTAMPTZ DEFAULT now()
+);
 ```
 
 ## Notas de implementação
@@ -116,4 +125,5 @@ CREATE TABLE prova (
 - **Matching de intervalos** (RF22): o Garmin não distingue tiro de trote de recuperação no dado bruto — `intensityType` só vem como `WARMUP`/`ACTIVE`/`COOLDOWN` (nunca `REST`), então todo lap do meio de um treino intervalado chega com `treino_realizado_intervalo.tipo = 'run'` e `repeticao_numero` sequencial contando tiro+trote juntos, sem bater com o `treino_previsto_intervalo.repeticao_numero` (que numera só os tiros). O casamento não usa esses `repeticao_numero` como chave: dentro da sequência de laps `run` do realizado, eles alternam tiro/trote sempre começando pelo tiro (posição ímpar = tiro, par = trote) — heurística validada contra atividade real (10x400m) e usada por posição para casar com os tiros/trotes previstos, em `montarComparacaoTiros` (`app/src/utils/comparacaoTiro.ts`). Quando há mais de um `treino_realizado` vinculado ao previsto, os intervalos de todos eles são combinados (ordenados por `ordem`) antes desse casamento.
 - **Tags de sensação**: lista inicial em `sensacoes` é um ponto de partida — não travar como enum rígido no banco (usar `TEXT[]` como no schema), para não exigir migration toda vez que uma tag nova for adicionada.
 - **Campos `INTERVAL`**: o Prisma não tem tipo nativo para `INTERVAL` do Postgres. Decisão tomada na Fase 0/1: todos os campos `INTERVAL` deste documento (`meta_tempo`, `tempo_planejado_total`, `duracao_alvo`, `duracao`, `tempo`) viram `INT` (segundos) no `schema.prisma` real, com sufixo `_segundos` na coluna (ex: `duracao_alvo_segundos`). Este documento continua descrevendo o modelo conceitual; o schema Prisma é a fonte da verdade do tipo físico da coluna.
+- **`garmin_sessao`** guarda o token OAuth (`garth`, formato opaco via `Client.dumps()`/`loads()`) obtido no último login completo com sucesso no Garmin. O subprocesso Python (`backend/garmin_client/session.py`) tenta reaproveitar esse token a cada início de sessão; só faz login completo (usuário/senha) de novo quando não há token salvo ou ele foi rejeitado pelo Garmin (token expirado/inválido). Motivo: login completo repetido (a cada deploy, cold start do Render após idle, ou qualquer falha que derrube a sessão) aciona rate limit (HTTP 429) no SSO do Garmin — incidente observado em produção em 2026-09-13.
 - **Ciclo não guarda a prova alvo diretamente** (decisão tomada após feedback do dono do projeto, migration `ciclo_usa_prova_relacionada`): a primeira versão tinha `prova_alvo`/`data_prova`/`meta_tempo`/`distancia_prova_km` como colunas soltas em `ciclo`, duplicando (e podendo dessincronizar de) a tabela `prova`. Agora `ciclo` só tem `nome`/`data_inicio`/`data_fim`/`status`; a prova alvo é a linha de `prova` com `tipo = 'alvo'` vinculada ao ciclo (`prova.ciclo_id`), criada junto com o ciclo na mesma operação. Regras de negócio: cada ciclo tem exatamente uma prova `alvo` (criada no `POST /ciclos`, editada via `PATCH /ciclos/:id` — nunca diretamente em `POST /ciclos/:id/provas`, que só aceita `secundaria`) e ela não pode ser excluída via `DELETE /provas/:id`. A contagem regressiva (RF21) e o nome/distância exibidos no dashboard (RF19-21) sempre lêem dessa prova alvo, nunca de um campo solto no ciclo.

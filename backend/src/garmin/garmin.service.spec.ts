@@ -10,7 +10,12 @@ jest.mock('child_process', () => ({
 
 const spawnMock = spawn as jest.Mock;
 
-type RespostaFake = { ok: boolean; data?: unknown; error?: string };
+type RespostaFake = {
+  ok: boolean;
+  data?: unknown;
+  error?: string;
+  novoTokenStore?: string;
+};
 
 // Fila compartilhada entre todos os processos fake criados no teste — cada
 // escrita em stdin consome a próxima resposta enfileirada, simulando o
@@ -45,12 +50,21 @@ function criarProcessoFake() {
 
 describe('GarminService', () => {
   let service: GarminService;
+  let prismaMock: {
+    garminSessao: { findUnique: jest.Mock; upsert: jest.Mock };
+  };
 
   beforeEach(() => {
     respostasEnfileiradas = [];
     spawnMock.mockReset();
     spawnMock.mockImplementation(() => criarProcessoFake());
-    service = new GarminService();
+    prismaMock = {
+      garminSessao: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        upsert: jest.fn().mockResolvedValue(undefined),
+      },
+    };
+    service = new GarminService(prismaMock as never);
   });
 
   function proximaResposta(resposta: RespostaFake) {
@@ -96,6 +110,33 @@ describe('GarminService', () => {
     const splits = await service.buscarSplitsDaAtividade(123);
 
     expect(splits).toEqual([{ lapIndex: 1, intensityType: 'ACTIVE' }]);
+  });
+
+  it('lê o token salvo e passa por env var ao spawnar o subprocesso', async () => {
+    prismaMock.garminSessao.findUnique.mockResolvedValue({
+      id: 1,
+      tokenStore: 'token-salvo',
+    });
+    proximaResposta({ ok: true, data: [] });
+
+    await service.buscarAtividadesRecentes();
+
+    const opcoesDoSpawn = spawnMock.mock.calls[0][2] as {
+      env: Record<string, string>;
+    };
+    expect(opcoesDoSpawn.env.GARMIN_TOKEN_STORE).toBe('token-salvo');
+  });
+
+  it('salva o novo token quando o subprocesso precisa de login completo', async () => {
+    proximaResposta({ ok: true, data: [], novoTokenStore: 'token-novo' });
+
+    await service.buscarAtividadesRecentes();
+
+    expect(prismaMock.garminSessao.upsert).toHaveBeenCalledWith({
+      where: { id: 1 },
+      create: { id: 1, tokenStore: 'token-novo' },
+      update: { tokenStore: 'token-novo' },
+    });
   });
 
   it('falha ao buscar splits de uma atividade não invalida a sessão inteira', async () => {

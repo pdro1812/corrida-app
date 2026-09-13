@@ -179,3 +179,18 @@ model Prova {
 
   @@map("prova")
 }
+
+// Cache do token de sessão OAuth do Garmin (biblioteca `garth`, usada pelo
+// subprocesso Python — ver docs/ARCHITECTURE.md §3). Linha única (id fixo).
+// Sem isso, todo restart do subprocesso (deploy, cold start do Render após
+// idle, ou qualquer falha que derrube a sessão) forçava um login completo
+// usuário/senha novo — e login completo repetido é o que aciona rate limit
+// (429) no SSO do Garmin. Guardando o token aqui, o subprocesso só refaz
+// login completo se não houver token salvo ou ele estiver inválido/expirado.
+model GarminSessao {
+  id           Int      @id @default(1)
+  tokenStore   String   @map("token_store") @db.Text
+  atualizadoEm DateTime @default(now()) @updatedAt @map("atualizado_em") @db.Timestamptz
+
+  @@map("garmin_sessao")
+}
