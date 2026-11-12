@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { FlatList, Text } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Ciclo, provaAlvoDoCiclo } from '../types/api';
+import { Ciclo, provaAlvoDoCiclo } from '../types/modelo';
 import { Screen } from '../components/Screen';
 import { Card } from '../components/Card';
 import { Banner } from '../components/Banner';

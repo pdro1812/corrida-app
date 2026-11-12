@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { TreinoPrevisto, TreinoRealizadoComPrevisto } from '../types/api';
+import { TreinoPrevisto, TreinoRealizadoComPrevisto } from '../types/modelo';
 import { Screen } from '../components/Screen';
 import { Card } from '../components/Card';
 import { Banner } from '../components/Banner';

@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { TipoTreino } from '../types/api';
+import { TipoTreino } from '../types/modelo';
 import { espacamento, raio, tipoTreino, tipografia } from '../theme/theme';
 
 const ROTULOS: Record<TipoTreino, string> = {

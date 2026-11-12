@@ -59,11 +59,11 @@
 | RNF02 | Comunicação app↔backend sempre via HTTPS. |
 | RNF03 | Acesso à API do backend protegido por token fixo (API key), sem login completo. |
 | RNF04 | Credenciais do Garmin Connect apenas em variáveis de ambiente/secret manager, nunca no código-fonte. |
-| RNF05 | Sincronização com Garmin limitada a poucas execuções/dia (lib não-oficial, ver `ARCHITECTURE.md` §3). |
+| RNF05 | Sincronização com Garmin limitada a poucas execuções/dia (Garmin Personal API, ver `ARCHITECTURE.md` §3). |
 | RNF06 | App continua funcional (planejamento, dashboards) mesmo se a sincronização Garmin estiver indisponível. |
 | RNF07 | Banco com backup automático do provedor + export manual sob demanda. |
 | RNF08 | App responsivo apenas para a resolução do celular alvo — não precisa suportar múltiplos tamanhos de tela nem iOS. |
 | RNF09 | Backend e app com pipeline de CI/CD (lint + testes + build antes de deploy). |
 | RNF10 | TypeScript em toda a stack. |
 | RNF11 | Infraestrutura dentro dos limites gratuitos dos provedores (Supabase, Railway/Render, EAS Build). |
-| RNF12 | Sistema tolerante a falhas da lib não-oficial do Garmin sem quebrar o restante do app. |
+| RNF12 | Sistema tolerante a falhas da integração com o Garmin (API fora do ar, chave expirada) sem quebrar o restante do app. |

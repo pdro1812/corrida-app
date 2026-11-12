@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { HomeStackParamList } from '../types/navigation';
-import { TreinoPrevisto } from '../types/api';
+import { TreinoPrevisto } from '../types/modelo';
 import { buscarTreinoPrevisto } from '../services/treinos';
 import { paceParaSegundos } from '../utils/comparacao';
 import { montarComparacaoTiros, RepeticaoComparada } from '../utils/comparacaoTiro';
