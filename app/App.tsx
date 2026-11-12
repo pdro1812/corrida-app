@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Pressable } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { NavigationContainer } from '@react-navigation/native';
+import { createNavigationContainerRef, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,11 +18,21 @@ import { RegistrarTreinoManualScreen } from './src/screens/RegistrarTreinoManual
 import { AtividadesGarminScreen } from './src/screens/AtividadesGarminScreen';
 import { DiarioTreinosScreen } from './src/screens/DiarioTreinosScreen';
 import { ConfiguracoesScreen } from './src/screens/ConfiguracoesScreen';
+import { AvaliarTreinoScreen } from './src/screens/AvaliarTreinoScreen';
 import { sincronizarSeNecessario } from './src/services/sync';
+import { listarTreinosSemRpe } from './src/services/rpe';
+import { aoTocarNotificacaoRpe, notificarRpePendente } from './src/services/notificacoes';
 import { cores } from './src/theme/theme';
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
 const Tab = createBottomTabNavigator<RootTabParamList>();
+const navegacao = createNavigationContainerRef<RootTabParamList>();
+
+function abrirAvaliacao(treinoRealizadoId: string) {
+  if (navegacao.isReady()) {
+    navegacao.navigate('HomeTab', { screen: 'AvaliarTreino', params: { treinoRealizadoId } });
+  }
+}
 
 const headerOptions = {
   headerStyle: { backgroundColor: cores.superficie },
@@ -80,6 +90,11 @@ function HomeStackNavigator() {
         options={{ title: 'Histórico de ciclos' }}
       />
       <Stack.Screen
+        name="AvaliarTreino"
+        component={AvaliarTreinoScreen}
+        options={{ title: 'Avaliar treino' }}
+      />
+      <Stack.Screen
         name="RegistrarTreinoManual"
         component={RegistrarTreinoManualScreen}
         options={{ title: 'Registrar treino' }}
@@ -103,11 +118,19 @@ export default function App() {
   // com a Garmin se a última sincronização tiver mais de 12h. Silencioso —
   // o resultado aparece nas telas quando elas recarregam.
   useEffect(() => {
-    void sincronizarSeNecessario().catch(() => undefined);
+    void sincronizarSeNecessario()
+      .then(async (resultado) => {
+        // v2: treino novo importado -> pede o RPE por notificação.
+        if (resultado?.ok && (resultado.idsImportados?.length ?? 0) > 0) {
+          await notificarRpePendente(await listarTreinosSemRpe());
+        }
+      })
+      .catch(() => undefined);
+    return aoTocarNotificacaoRpe(abrirAvaliacao);
   }, []);
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navegacao}>
       <Tab.Navigator
         screenOptions={({ route }) => ({
           ...headerOptions,

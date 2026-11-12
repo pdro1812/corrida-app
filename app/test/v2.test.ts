@@ -11,6 +11,7 @@ import {
 } from '../src/dominio/metricasFit';
 import { gerarBackup, restaurarBackup } from '../src/services/backup';
 import { completarClimaPendente, gravarMetricasFit } from '../src/services/metricas';
+import { listarTreinosSemRpe } from '../src/services/rpe';
 import { criarBancoDeTeste } from './bancoDeTeste';
 
 // FIT sintético gerado com o Encoder do próprio SDK — sem dados reais.
@@ -192,5 +193,24 @@ describe('treino_metricas no banco', () => {
     expect(backup.tabelas.treino_metricas).toHaveLength(1);
     await restaurarBackup(JSON.stringify(backup));
     expect(await banco.todos('SELECT * FROM treino_metricas')).toHaveLength(1);
+  });
+});
+
+describe('RPE pendente', () => {
+  it('lista só treinos da Garmin da última semana sem RPE', async () => {
+    const banco = await criarBancoDeTeste();
+    const inserir = (id: string, data: string, fonte: string, rpe: number | null) =>
+      banco.executar('INSERT INTO treino_realizado (id, fonte, data, rpe, distancia_km, criado_em) VALUES (?, ?, ?, ?, 8, ?)', [
+        id,
+        fonte,
+        data,
+        rpe,
+        data,
+      ]);
+    await inserir('novo', '2026-11-11', 'garmin', null);
+    await inserir('avaliado', '2026-11-10', 'garmin', 6);
+    await inserir('manual', '2026-11-10', 'manual', null);
+    await inserir('antigo', '2026-10-01', 'garmin', null);
+    expect((await listarTreinosSemRpe('2026-11-12')).map((t) => t.id)).toEqual(['novo']);
   });
 });

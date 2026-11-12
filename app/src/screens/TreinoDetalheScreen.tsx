@@ -198,7 +198,7 @@ function FormularioNaoRealizado({
   );
 }
 
-function FormularioFeedback({
+export function FormularioFeedback({
   titulo,
   treinoRealizadoId,
   rpeInicial,
