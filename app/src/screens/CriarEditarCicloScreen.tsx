@@ -9,7 +9,7 @@ import { Button } from '../components/Button';
 import { Banner } from '../components/Banner';
 import { LoadingState } from '../components/LoadingState';
 import { atualizarCiclo, buscarCiclo, criarCiclo, excluirCiclo } from '../services/ciclos';
-import { provaAlvoDoCiclo } from '../types/api';
+import { provaAlvoDoCiclo } from '../types/modelo';
 import { formatarDuracao } from '../utils/formato';
 import { espacamento, tipografia } from '../theme/theme';
 

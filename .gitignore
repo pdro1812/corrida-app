@@ -2,7 +2,6 @@
 .env
 .env.local
 *.env.local
-backend/.env
 app/.env
 
 # Node
@@ -11,10 +10,6 @@ npm-debug.log*
 dist/
 build/
 
-# Backend (NestJS / Prisma)
-backend/dist/
-backend/prisma/*.db
-backend/.venv/
 
 # App (Expo)
 app/.expo/

@@ -4,7 +4,7 @@ import { CompositeScreenProps, useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { HomeStackParamList, RootTabParamList } from '../types/navigation';
-import { Ciclo, Prova, Semana, provaAlvoDoCiclo } from '../types/api';
+import { Ciclo, Prova, Semana, provaAlvoDoCiclo } from '../types/modelo';
 import { buscarCicloAtivo } from '../services/ciclos';
 import { listarSemanasDoCiclo } from '../services/semanas';
 import { sincronizarGarmin } from '../services/sync';

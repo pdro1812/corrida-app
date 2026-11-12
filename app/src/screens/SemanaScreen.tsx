@@ -3,7 +3,7 @@ import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { HomeStackParamList } from '../types/navigation';
-import { Semana, TreinoPrevisto } from '../types/api';
+import { Semana, TreinoPrevisto } from '../types/modelo';
 import { buscarSemana, excluirSemana } from '../services/semanas';
 import { formatarDuracao, formatarKm, formatarData } from '../utils/formato';
 import { agregarRealizados, calcularStatusComparacao, ICONE_STATUS } from '../utils/comparacao';

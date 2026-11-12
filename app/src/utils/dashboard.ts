@@ -1,4 +1,4 @@
-import { Semana } from '../types/api';
+import { Semana } from '../types/modelo';
 import { agregarRealizados } from './comparacao';
 
 // RF21: contagem regressiva até a data da prova alvo.

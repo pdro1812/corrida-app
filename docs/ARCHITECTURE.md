@@ -5,7 +5,7 @@
 ```
 ┌─────────────────────┐        ┌────────────────────────┐        ┌──────────────────┐
 │  App Android (Expo)  │ HTTPS  │  Backend (NestJS)        │  HTTPS │  Garmin Connect    │
-│  React Native          │◄──────►│  Railway ou Render         │◄──────►│  (lib não-oficial)  │
+│  React Native          │◄──────►│  Railway ou Render         │◄──────►│  (Personal API)     │
 └─────────────────────┘        │  + cron @nestjs/schedule   │        └──────────────────┘
                                  └─────────────┬──────────────┘
                                                 │
@@ -33,25 +33,36 @@ Backend é obrigatório (não dá para fazer "tudo local no celular") porque a i
 
 ### 3.1 Contexto (importante para não reinventar a abordagem)
 
-- A API **oficial** (Garmin Connect Developer Program) só é liberada para empresas parceiras aprovadas — não existe caminho de acesso individual via conta de desenvolvedor.
-- Caminho usado para uso pessoal: lib **não-oficial** que autentica com e-mail/senha do Garmin Connect. Funciona como login normal do app oficial, mas é automatizado.
-- Isso está fora dos Termos de Uso do Garmin (acesso automatizado), embora seja um padrão amplamente usado por projetos pessoais. Risco real é baixo; pior cenário comum é a lib quebrar após mudança no site da Garmin, exigindo update de dependência — não banimento de conta.
-- Decisão do projeto: aceitar esse risco (RNF05), mitigando com sincronização limitada a 1x/dia + trigger manual, nunca polling agressivo.
-- **Implementação (set/2026):** as libs Node não-oficiais (`garmin-connect`, `@gooin/garmin-connect`) pararam de conseguir autenticar depois de uma mudança no fluxo de login do Garmin. A lib Python `garminconnect` (cyberjunky/python-garminconnect, mantida ativamente) já foi corrigida para o novo fluxo — validada manualmente contra a conta real. Por isso `GarminService` delega a autenticação a um subprocesso Python (`backend/garmin_client/session.py`, `backend/requirements.txt`), mantido vivo por sessão e conversando com o Nest via stdin/stdout (uma linha JSON por comando/resposta). A venv é criada automaticamente no `postinstall` do backend (`backend/package.json`), então roda no mesmo serviço do Render sem precisar de uma segunda aplicação — se a preparação do Python falhar no build, a sincronização Garmin fica indisponível (erro tratado, RNF12) mas o resto do backend continua funcionando normalmente.
-- **Cache de sessão (set/2026, pós-incidente):** cada restart do subprocesso Python (deploy, cold start do Render após idle no free tier, ou qualquer falha que derrube a sessão) fazia um login completo usuário/senha novo — e login completo repetido em pouco tempo aciona rate limit (HTTP 429) no SSO do Garmin, o que já aconteceu em produção. Para evitar isso, o token OAuth da lib `garth` (usada internamente pelo `garminconnect`) é cacheado na tabela `garmin_sessao` (Postgres, ver `DATA_MODEL.md`) via `GarminService`: ao spawnar o subprocesso, o Node lê o token salvo e passa por variável de ambiente (`GARMIN_TOKEN_STORE`); o Python só faz login completo se não houver token ou ele for rejeitado (expirado/inválido), e nesse caso devolve o token novo para o Node salvar. Como o token não rotaciona a cada uso (só o access token de curta duração é renovado internamente pela própria lib, sem precisar de login completo), um único login completo tende a durar bem mais que os `poucas execuções/dia` de RNF05 — usar o banco em vez do disco local porque o filesystem do Render é efêmero entre deploys.
+- **Garmin Connect Personal API (nov/2026 em diante):** programa oficial da Garmin para um usuário acessar os próprios dados, sem aprovação empresarial (diferente do Garmin Connect Developer Program, que continua fora de escopo). A chave é gerada pelo próprio dono em `connect.garmin.com/app/settings/personalApiToken` (validade escolhida na criação: 30/90/180 dias ou 1 ano; a Garmin manda e-mail ~1 semana antes de expirar — **renovar manualmente e atualizar `GARMIN_API_KEY`**). Docs: `developer.garmin.com/gc-developer-program/personal/personal-api`; client Python oficial de referência: `github.com/garmin/connect-personal-api-python`.
+- **Autenticação:** `POST https://personal.connectapi.garmin.com/personalapitoken-service/personal-api/personal-api-key/token` com header `Authorization: ApiKey <GARMIN_API_KEY>` devolve o access token (JWT em texto puro, não JSON; validade ~24h pelo claim `exp`; sem refresh token — basta pedir outro). Chamadas de dados usam `Authorization: Bearer <token>`. `GarminService` guarda o token só em memória e renova quando falta menos de 1h para expirar ou após um 401 — como o sync roda 1x/dia, não precisa persistir nada no banco.
+- **Endpoints usados** (base `https://personal.connectapi.garmin.com`):
+  - `GET /activitylist-service/activities/search/activities?start=0&limit=20` — lista de atividades com todos os campos de `treino_realizado` (`activityId`, `startTimeLocal`, `distance`, `duration`, `averageSpeed`, `averageHR`, `maxHR`, `elevationGain`, `lapCount`, `activityType.typeKey`). Aceita também `startDate`/`endDate` (YYYY-MM-DD).
+  - `GET /download-service/files/activity/{id}` com `Accept: application/zip, application/x-zip-compressed, application/octet-stream` (só `application/zip` dá 406) — ZIP com o arquivo FIT original. **Os laps só existem aqui:** os endpoints JSON de splits (`/activity-service/activity/{id}/splits`, `/typedsplits`, `/split_summaries`) respondem 404 nessa API. O FIT é lido com o SDK oficial `@garmin/fitsdk` (`backend/src/garmin/garmin-fit.ts`).
+- **Ganho em relação ao FIT:** o campo `intensity` de cada lap distingue tiro (`active`) de trote (`recovery`) em treinos estruturados no relógio — o endpoint JSON antigo nunca marcava REST. Ver nota de matching de intervalos em `DATA_MODEL.md`.
+- **Histórico:** até out/2026 o sync usava a lib **não-oficial** Python `garminconnect` (login com e-mail/senha, subprocesso persistente + cache de token na tabela `garmin_sessao`), fora dos Termos de Uso e sujeita a quebrar a cada mudança no login do Garmin — já tinha causado rate limit 429 no SSO em produção (2026-09-13). Tudo isso foi removido na troca para a Personal API (migration `remove_garmin_sessao`).
+- Decisão do projeto mantida (RNF05): sincronização limitada a 1x/dia + trigger manual, nunca polling agressivo. A Personal API não documenta rate limit.
 
 ### 3.2 Fluxo de sincronização
 
-1. Credenciais Garmin (`GARMIN_EMAIL`, `GARMIN_PASSWORD`) apenas em variável de ambiente — nunca no código, nunca no banco em texto puro.
-2. Job `@Cron(process.env.GARMIN_SYNC_CRON)` — padrão `0 7 * * *` (7h, configurável) — chama `GarminService`, que busca atividades novas via o subprocesso Python (ver §3.1) desde a última sincronização.
+1. Chave da Personal API (`GARMIN_API_KEY`) apenas em variável de ambiente — nunca no código, nunca no banco, nunca logada.
+2. Job `@Cron(process.env.GARMIN_SYNC_CRON)` — padrão `0 7 * * *` (7h, configurável) — chama `GarminService`, que busca atividades novas pela Personal API (ver §3.1).
 3. Para cada atividade de corrida: extrai data, distância, duração, pace médio, FC média/máxima, elevação, `activityId` (chave de idempotência, RF14).
-4. Busca também os splits da atividade (`getActivitySplits` ou equivalente) → popula `treino_realizado_intervalo` (dados equivalentes à tela "Intervals" do app Garmin: Warm Up, Run, Recovery...).
+4. Para atividades com mais de 1 lap, baixa o arquivo FIT e extrai os laps → popula `treino_realizado_intervalo` (dados equivalentes à tela "Intervals" do app Garmin: Warm Up, Run, Recovery...). Falha em uma atividade específica não aborta o sync — ela entra sem intervalos.
 5. Salva `treino_realizado`, tenta casar com `treino_previsto` da mesma data (RF15, regra em `DATA_MODEL.md`).
 6. Endpoint `POST /sync/garmin` permite disparo manual (RF11) — vira botão "Sincronizar agora" no app.
 
 ### 3.3 Tolerância a falha (RNF12)
 
-Se a lib não-oficial parar de funcionar, o resto do app (planejamento, dashboards, registro manual) continua operando normalmente. Falha de sync não deve derrubar nenhuma outra rota — isolar chamadas Garmin em try/catch dedicado, logar erro, não propagar exceção não tratada.
+Se a Personal API ficar indisponível ou a chave expirar, o resto do app (planejamento, dashboards, registro manual) continua operando normalmente. Falha de sync não deve derrubar nenhuma outra rota — isolar chamadas Garmin em try/catch dedicado, logar erro, não propagar exceção não tratada.
+
+### 3.4 Integração exploratória com Strava (fora do escopo original da V1)
+
+- **Contexto:** pedido do dono do projeto em 2026-09-20, fora de `REQUIREMENTS.md`. Objetivo inicial é só trazer a última atividade do Strava para avaliar se vale a pena evoluir — **não** integra com `treino_previsto`/`treino_realizado` (RF15) nem participa do matching/dashboards ainda. Se evoluir, isso vira uma decisão separada (schema, RF novo).
+- **Autenticação:** diferente do Garmin (chave fixa da Personal API), o Strava só expõe OAuth2 padrão. Fluxo de setup único: o dono cria um app em `strava.com/settings/api` (Client ID/Secret, `Authorization Callback Domain = localhost`), autoriza uma vez pelo navegador (`GET /strava/autorizar` devolve a URL de autorização) e cola o `code` retornado em `POST /strava/token`, que troca por `access_token`/`refresh_token`.
+- **Renovação:** `access_token` expira em ~6h; `StravaService` renova via `refresh_token` automaticamente quando expirado (o Strava rotaciona o `refresh_token` a cada renovação, então o valor salvo sempre precisa refletir o mais recente).
+- **Persistência:** `strava_sessao` (tabela única, `id` fixo), linha única com `id` fixo — necessário porque o filesystem do Render é efêmero entre deploys/restarts.
+- **Credenciais:** `STRAVA_CLIENT_ID`/`STRAVA_CLIENT_SECRET` só em variável de ambiente, nunca no código nem logado (mesma regra de RNF04, embora Strava não esteja formalmente nas RNFs ainda).
+- **Endpoint exploratório:** `GET /strava/ultima-atividade` busca a atividade mais recente (`GET /athlete/activities?per_page=1`) e complementa com o detalhe completo (`GET /activities/:id`) para trazer o máximo de campos disponíveis (splits, laps, segment efforts, gear etc.), sem persistir nada no banco — é só leitura/exploração por enquanto.
 
 ## 4. Import de planilha (RF05)
 
@@ -70,7 +81,7 @@ Popula `semana` + `treino_previsto` automaticamente. Para treinos intervalados, 
 
 | Item | Prática |
 |---|---|
-| Credenciais Garmin | Só em env vars (Railway/Render + Supabase Vault). `.env` sempre no `.gitignore`. |
+| Credenciais Garmin | `GARMIN_API_KEY` só em env vars (Railway/Render). `.env` sempre no `.gitignore`. |
 | Comunicação | HTTPS obrigatório (TLS automático nos provedores). |
 | Autenticação API | Guard NestJS validando header `Authorization: Bearer <API_KEY>` em toda rota exceto `/health`. |
 | Banco | Row Level Security ativado no Supabase mesmo com 1 usuário (custo zero, boa prática). |
@@ -177,7 +188,7 @@ corrida-app/
 │   │   ├── semanas/
 │   │   ├── treinos/              # treino_previsto + treino_realizado + intervalos
 │   │   ├── provas/
-│   │   ├── garmin/                # GarminService (subprocesso Python) + cron
+│   │   ├── garmin/                # GarminService (Personal API + leitura de FIT)
 │   │   ├── import/                # parser CSV/JSON
 │   │   ├── auth/                  # guard de API key
 │   │   ├── prisma/                # PrismaService + schema.prisma
