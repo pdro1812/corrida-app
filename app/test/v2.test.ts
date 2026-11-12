@@ -16,6 +16,7 @@ import { montarExportIa, TreinoParaExport } from '../src/dominio/exportIa';
 import { gerarExportIa } from '../src/services/exportIa';
 import { descreverEstrutura, podarJson, resumirDia, separarPorDia } from '../src/dominio/bemEstar';
 import { listarBemEstar, sincronizarBemEstar } from '../src/services/bemEstar';
+import { calcularProntidao } from '../src/dominio/analise';
 import { criarBancoDeTeste } from './bancoDeTeste';
 
 // FIT sintético gerado com o Encoder do próprio SDK — sem dados reais.
@@ -338,5 +339,33 @@ describe('bem-estar (sono, HRV, Body Battery)', () => {
     const md = await gerarExportIa(4, new Date('2026-11-12T12:00:00Z'));
     expect(md).toContain('## Recuperação diária');
     expect(md).toContain('2026-11-11;7;');
+  });
+});
+
+describe('análise (Lab)', () => {
+  const dia = (data: string, hrv: number | null, fc: number | null) => ({
+    data,
+    sonoHoras: 7,
+    sonoScore: null,
+    hrvNoite: hrv,
+    hrvStatus: null,
+    stressMedio: null,
+    bodyBatteryMax: 80,
+    bodyBatteryMin: null,
+    fcRepouso: fc,
+    vo2max: null,
+  });
+
+  it('compara a prontidão do último dia com a semana anterior', () => {
+    const dias = ['01', '02', '03', '04', '05', '06', '07'].map((d) => dia(`2026-11-${d}`, 60, 48));
+    dias.push(dia('2026-11-08', 45, 54));
+    expect(calcularProntidao(dias)).toMatchObject({
+      data: '2026-11-08',
+      hrvNoite: 45,
+      hrvVariacaoPct: -25,
+      fcRepouso: 54,
+      fcRepousoVariacao: 6,
+    });
+    expect(calcularProntidao([]).data).toBeNull();
   });
 });

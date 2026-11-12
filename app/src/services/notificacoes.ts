@@ -8,7 +8,7 @@ import { TreinoSemRpe } from './rpe';
 
 const CANAL = 'rpe';
 
-Notifications.setNotificationHandler({
+if (Platform.OS !== 'web') Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
     shouldShowList: true,
@@ -30,7 +30,7 @@ async function permitido(): Promise<boolean> {
 }
 
 export async function notificarRpePendente(treinos: TreinoSemRpe[]): Promise<void> {
-  if (treinos.length === 0 || !(await permitido())) return;
+  if (Platform.OS === 'web' || treinos.length === 0 || !(await permitido())) return;
   const [maisRecente] = treinos;
   const corpo =
     treinos.length === 1
@@ -45,6 +45,7 @@ export async function notificarRpePendente(treinos: TreinoSemRpe[]): Promise<voi
 // Chama `abrir` quando o usuário toca na notificação (inclusive se ela
 // abriu o app). Devolve a função de limpeza do listener.
 export function aoTocarNotificacaoRpe(abrir: (treinoRealizadoId: string) => void): () => void {
+  if (Platform.OS === 'web') return () => undefined; // navegador: só para testar telas
   const tratar = (resposta: Notifications.NotificationResponse | null) => {
     const id = resposta?.notification.request.content.data?.treinoRealizadoId;
     if (typeof id === 'string') abrir(id);

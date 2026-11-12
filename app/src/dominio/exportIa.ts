@@ -1,6 +1,6 @@
 import { ResumoBemEstarDia } from './bemEstar';
 import { descreverTempo } from './clima';
-import { calcularCustoEsforco, indiceCustoRelativo } from './custoEsforco';
+import { analisarTreinos } from './analise';
 
 // v2: export compacto de treinos e métricas para colar numa conversa com o
 // Claude (o "treinador"), sem API paga. Markdown com tabelas em CSV de ';'
@@ -94,25 +94,7 @@ export function montarExportIa(treinosEntrada: TreinoParaExport[], contexto: Con
   const bemEstar = contexto.bemEstar ?? [];
   const bemEstarDoDia = new Map(bemEstar.map((b) => [b.data, b]));
 
-  // Custo ajustado de cada treino e índice contra o histórico ANTERIOR do
-  // mesmo tipo (100 = típico).
-  const historicoPorTipo = new Map<string, (number | null)[]>();
-  const linhas = treinos.map((t) => {
-    const custo = calcularCustoEsforco({
-      distanciaKm: t.distanciaKm,
-      duracaoSegundos: t.duracaoSegundos,
-      fcMedia: t.fcMedia,
-      elevacaoM: t.elevacaoM,
-      rpe: t.rpe,
-      desacoplamentoPct: t.desacoplamentoPct,
-      temperaturaC: t.temperaturaC,
-    });
-    const tipo = t.tipoPrevisto ?? 'sem_plano';
-    const historico = historicoPorTipo.get(tipo) ?? [];
-    const indice = indiceCustoRelativo(custo.batimentosPorKmAjustado, historico);
-    historicoPorTipo.set(tipo, [...historico, custo.batimentosPorKmAjustado]);
-    return { t, custo, indice, tipo };
-  });
+  const linhas = analisarTreinos(treinos).map(({ treino: t, custo, indice, tipo }) => ({ t, custo, indice, tipo }));
 
   const saida: string[] = [];
   saida.push('# Meus treinos de corrida: export para análise');

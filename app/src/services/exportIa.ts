@@ -45,11 +45,9 @@ function sensacoes(json: string): string[] {
   }
 }
 
-// semanas = null exporta tudo.
-export async function gerarExportIa(semanas: number | null, agora = new Date()): Promise<string> {
+// v2: também usada pela tela Lab.
+export async function carregarTreinosParaAnalise(desde: string): Promise<TreinoParaExport[]> {
   const banco = await obterBanco();
-  const hoje = agora.toISOString().slice(0, 10);
-  const desde = semanas === null ? '0000-01-01' : somarDias(hoje, -7 * semanas);
   const linhas = await banco.todos<LinhaExport>(
     `SELECT r.id, r.data, r.distancia_km, r.duracao_segundos, r.pace_medio, r.fc_media, r.fc_max, r.elevacao_m,
             r.rpe, r.sensacoes, r.feedback_texto,
@@ -106,7 +104,14 @@ export async function gerarExportIa(semanas: number | null, agora = new Date()):
       fcMedia: i.fc_media,
     })),
   }));
+  return treinos;
+}
 
+// semanas = null exporta tudo.
+export async function gerarExportIa(semanas: number | null, agora = new Date()): Promise<string> {
+  const hoje = agora.toISOString().slice(0, 10);
+  const desde = semanas === null ? '0000-01-01' : somarDias(hoje, -7 * semanas);
+  const treinos = await carregarTreinosParaAnalise(desde);
   const ciclo = await buscarCicloAtivo();
   const prova = ciclo ? provaAlvoDoCiclo(ciclo) : null;
   return montarExportIa(treinos, {

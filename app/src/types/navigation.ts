@@ -20,6 +20,7 @@ export type HomeStackParamList = {
 // ciclo ativo sozinha, já que são acessíveis diretamente pela barra.
 export type RootTabParamList = {
   HomeTab: NavigatorScreenParams<HomeStackParamList> | undefined;
+  Lab: undefined;
   Treinos: undefined;
   Provas: undefined;
   Importar: undefined;

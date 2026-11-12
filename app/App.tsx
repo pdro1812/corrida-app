@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Pressable } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { createNavigationContainerRef, NavigationContainer } from '@react-navigation/native';
+import { createNavigationContainerRef, DarkTheme, NavigationContainer, Theme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +18,7 @@ import { RegistrarTreinoManualScreen } from './src/screens/RegistrarTreinoManual
 import { AtividadesGarminScreen } from './src/screens/AtividadesGarminScreen';
 import { DiarioTreinosScreen } from './src/screens/DiarioTreinosScreen';
 import { ConfiguracoesScreen } from './src/screens/ConfiguracoesScreen';
+import { LabScreen } from './src/screens/LabScreen';
 import { AvaliarTreinoScreen } from './src/screens/AvaliarTreinoScreen';
 import { sincronizarSeNecessario } from './src/services/sync';
 import { listarTreinosSemRpe } from './src/services/rpe';
@@ -27,6 +28,19 @@ import { cores } from './src/theme/theme';
 const Stack = createNativeStackNavigator<HomeStackParamList>();
 const Tab = createBottomTabNavigator<RootTabParamList>();
 const navegacao = createNavigationContainerRef<RootTabParamList>();
+
+// v2: tema escuro também na navegação (sem flash branco entre telas).
+const temaNavegacao: Theme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    primary: cores.primaria,
+    background: cores.fundo,
+    card: cores.superficie,
+    text: cores.texto,
+    border: cores.borda,
+  },
+};
 
 function abrirAvaliacao(treinoRealizadoId: string) {
   if (navegacao.isReady()) {
@@ -107,6 +121,7 @@ function HomeStackNavigator() {
 // colorido; preenchido quando a aba está ativa, contorno quando não.
 const ICONES_POR_ABA: Record<keyof RootTabParamList, { ativo: keyof typeof Ionicons.glyphMap; inativo: keyof typeof Ionicons.glyphMap }> = {
   HomeTab: { ativo: 'home', inativo: 'home-outline' },
+  Lab: { ativo: 'pulse', inativo: 'pulse-outline' },
   Treinos: { ativo: 'journal', inativo: 'journal-outline' },
   Provas: { ativo: 'flag', inativo: 'flag-outline' },
   Importar: { ativo: 'cloud-upload', inativo: 'cloud-upload-outline' },
@@ -130,7 +145,7 @@ export default function App() {
   }, []);
 
   return (
-    <NavigationContainer ref={navegacao}>
+    <NavigationContainer ref={navegacao} theme={temaNavegacao}>
       <Tab.Navigator
         screenOptions={({ route }) => ({
           ...headerOptions,
@@ -151,12 +166,13 @@ export default function App() {
           component={HomeStackNavigator}
           options={{ title: 'Início', headerShown: false }}
         />
+        <Tab.Screen name="Lab" component={LabScreen} options={{ title: 'Lab' }} />
         <Tab.Screen name="Treinos" component={DiarioTreinosScreen} options={{ title: 'Diário de treinos' }} />
         <Tab.Screen name="Provas" component={ProvasScreen} options={{ title: 'Provas' }} />
         <Tab.Screen name="Importar" component={ImportarPlanilhaScreen} options={{ title: 'Importar planilha' }} />
         <Tab.Screen name="Garmin" component={AtividadesGarminScreen} options={{ title: 'Dados do Garmin' }} />
       </Tab.Navigator>
-      <StatusBar style="auto" />
+      <StatusBar style="light" />
     </NavigationContainer>
   );
 }

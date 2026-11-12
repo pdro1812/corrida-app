@@ -1,4 +1,5 @@
 import { TreinoRealizadoComPrevisto } from '../types/modelo';
+import { cores } from '../theme/theme';
 
 export interface ResumoRecente {
   quantidade: number;
@@ -37,8 +38,8 @@ export function calcularResumoRecente(
 
 // Cor por faixa de RPE (1-10) — usada pro badge no Diário de Treinos.
 export function corDoRpe(rpe: number): string {
-  if (rpe <= 3) return '#16a34a'; // leve
-  if (rpe <= 6) return '#2563eb'; // moderado
-  if (rpe <= 8) return '#d97706'; // forte
-  return '#dc2626'; // máximo
+  if (rpe <= 3) return cores.esforco[0]; // leve
+  if (rpe <= 6) return cores.esforco[1]; // moderado
+  if (rpe <= 8) return cores.esforco[2]; // forte
+  return cores.esforco[3]; // máximo
 }

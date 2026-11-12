@@ -104,14 +104,18 @@ async function abrirSemCriptografia(): Promise<BancoExpo> {
 
 async function abrirExpoSqlite(): Promise<Banco> {
   // Imports dinâmicos: os testes nunca carregam os módulos nativos.
-  const SecureStore = await import('expo-secure-store');
-  const hex = await obterChaveDoBanco();
+  const { Platform } = await import('react-native');
   let db: BancoExpo;
-  if ((await SecureStore.getItemAsync(MARCA_MIGRADO)) === '1') {
+  if (Platform.OS === 'web') {
+    // Só para testar telas no navegador: lá não há SecureStore nem
+    // SQLCipher. O app de verdade (Android) sempre usa o banco criptografado.
+    db = await abrirSemCriptografia();
+  } else if ((await (await import('expo-secure-store')).getItemAsync(MARCA_MIGRADO)) === '1') {
+    const hex = await obterChaveDoBanco();
     db = await abrirCriptografado(hex);
   } else {
     try {
-      db = await migrarParaCriptografado(hex);
+      db = await migrarParaCriptografado(await obterChaveDoBanco());
     } catch {
       // Ex: APK antigo sem SQLCipher. Nada se perde: segue no arquivo antigo
       // e tenta de novo na próxima abertura.
