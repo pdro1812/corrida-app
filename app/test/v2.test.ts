@@ -1,7 +1,17 @@
 import { Encoder, FileIdMesg, Profile, RecordMesg, SessionMesg } from '@garmin/fitsdk';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { descreverTempo, horaDeReferencia, lerClima, montarUrlClima } from '../src/dominio/clima';
 import { calcularCustoEsforco, indiceCustoRelativo } from '../src/dominio/custoEsforco';
-import { AmostraFit, calcularDesacoplamento, extrairMetricasDoFit } from '../src/dominio/metricasFit';
+import {
+  AmostraFit,
+  calcularDesacoplamento,
+  extrairMetricasDoFit,
+  MetricasFit,
+  metricasDaSessao,
+} from '../src/dominio/metricasFit';
+import { gerarBackup, restaurarBackup } from '../src/services/backup';
+import { completarClimaPendente, gravarMetricasFit } from '../src/services/metricas';
+import { criarBancoDeTeste } from './bancoDeTeste';
 
 // FIT sintético gerado com o Encoder do próprio SDK — sem dados reais.
 function fitSintetico(sessao: SessionMesg, records: RecordMesg[]): Uint8Array {
@@ -97,5 +107,90 @@ describe('custoEsforco', () => {
   it('compara com a mediana do histórico', () => {
     expect(indiceCustoRelativo(825, [750, 760, 740, 2000])).toBe(109);
     expect(indiceCustoRelativo(825, [750, null])).toBeNull(); // poucos treinos
+  });
+});
+
+describe('clima (Open-Meteo)', () => {
+  it('usa a hora cheia do meio do treino e arredonda a coordenada', () => {
+    expect(horaDeReferencia('2026-11-01T07:10:00.000Z', 3600)).toBe('2026-11-01T08:00');
+    const url = new URL(montarUrlClima(-29.68456, -53.80612, '2026-11-01T08:00', new Date('2026-11-12T00:00:00Z')));
+    expect(url.origin).toBe('https://api.open-meteo.com');
+    expect(url.searchParams.get('latitude')).toBe('-29.68');
+    expect(url.searchParams.get('longitude')).toBe('-53.81');
+    expect(url.searchParams.get('start_date')).toBe('2026-11-01');
+    // Treinos antigos vão para o arquivo histórico
+    expect(montarUrlClima(-29.68, -53.81, '2026-01-10T08:00', new Date('2026-11-12T00:00:00Z'))).toMatch(
+      /^https:\/\/archive-api\.open-meteo\.com/,
+    );
+  });
+
+  it('lê a hora certa da resposta', () => {
+    const resposta = {
+      hourly: {
+        time: ['2026-11-01T07:00', '2026-11-01T08:00'],
+        temperature_2m: [18, 21.5],
+        apparent_temperature: [18, 23],
+        relative_humidity_2m: [80, 70],
+        dew_point_2m: [14, 15.8],
+        wind_speed_10m: [5, 9],
+        precipitation: [0, 0],
+        weather_code: [1, 2],
+      },
+    };
+    expect(lerClima(resposta, '2026-11-01T08:00')).toEqual({
+      temperaturaC: 21.5,
+      sensacaoTermicaC: 23,
+      umidadePct: 70,
+      pontoOrvalhoC: 15.8,
+      ventoKmh: 9,
+      precipitacaoMm: 0,
+      codigoTempo: 2,
+    });
+    expect(lerClima(resposta, '2026-11-01T09:00')).toBeNull();
+    expect(lerClima(null, '2026-11-01T08:00')).toBeNull();
+    expect(descreverTempo(2)).toBe('parcialmente nublado');
+  });
+});
+
+describe('treino_metricas no banco', () => {
+  const metricasVazias = Object.fromEntries(
+    Object.keys(metricasDaSessao(undefined, [])).map((k) => [k, null]),
+  ) as unknown as MetricasFit;
+
+  it('grava métricas, busca clima uma vez e entra no backup', async () => {
+    const banco = await criarBancoDeTeste();
+    await banco.executar(
+      "INSERT INTO treino_realizado (id, garmin_activity_id, data, duracao_segundos, criado_em) VALUES ('r1', '9', '2026-11-01', 3600, 'x')",
+    );
+    await gravarMetricasFit(banco, 'r1', {
+      ...metricasVazias,
+      horaInicio: '2026-11-01T07:10:00.000Z',
+      latitudeInicio: -29.684567,
+      longitudeInicio: -53.806123,
+      cadenciaMediaPpm: 172,
+    });
+    const linha = await banco.primeiro<{ latitude: number; cadencia_media_ppm: number }>(
+      'SELECT latitude, cadencia_media_ppm FROM treino_metricas',
+    );
+    expect(linha).toEqual({ latitude: -29.68, cadencia_media_ppm: 172 }); // guardada já arredondada
+
+    const buscarJson = vi.fn(async () => ({
+      hourly: { time: ['2026-11-01T08:00'], temperature_2m: [24], weather_code: [0] },
+    }));
+    expect(await completarClimaPendente(banco, buscarJson)).toBe(1);
+    expect(await completarClimaPendente(banco, buscarJson)).toBe(0); // não repete
+    expect(buscarJson).toHaveBeenCalledTimes(1);
+
+    // Reler o FIT não apaga o clima
+    await gravarMetricasFit(banco, 'r1', { ...metricasVazias, cadenciaMediaPpm: 175 });
+    const depois = await banco.primeiro<{ clima_temperatura_c: number; cadencia_media_ppm: number }>(
+      'SELECT clima_temperatura_c, cadencia_media_ppm FROM treino_metricas',
+    );
+    expect(depois).toEqual({ clima_temperatura_c: 24, cadencia_media_ppm: 175 });
+
+    const backup = await gerarBackup();
+    expect(backup.tabelas.treino_metricas).toHaveLength(1);
+    await restaurarBackup(JSON.stringify(backup));
+    expect(await banco.todos('SELECT * FROM treino_metricas')).toHaveLength(1);
   });
 });

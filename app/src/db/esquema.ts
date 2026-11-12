@@ -113,9 +113,52 @@ const MIGRACOES: string[] = [
     valor TEXT NOT NULL
   );
   `,
+  // v2: métricas completas do FIT e clima na hora do treino (1:1 com
+  // treino_realizado). Coordenada guardada já arredondada (~1 km).
+  `
+  CREATE TABLE treino_metricas (
+    treino_realizado_id TEXT PRIMARY KEY REFERENCES treino_realizado(id) ON DELETE CASCADE,
+    hora_inicio TEXT,
+    latitude REAL,
+    longitude REAL,
+    cadencia_media_ppm INTEGER,
+    cadencia_max_ppm INTEGER,
+    potencia_media_w INTEGER,
+    potencia_normalizada_w INTEGER,
+    oscilacao_vertical_mm REAL,
+    razao_vertical_pct REAL,
+    tempo_contato_solo_ms INTEGER,
+    comprimento_passada_m REAL,
+    calorias INTEGER,
+    temperatura_relogio_c REAL,
+    descida_m REAL,
+    efeito_treino_aerobico REAL,
+    efeito_treino_anaerobico REAL,
+    carga_treino REAL,
+    desacoplamento_pct REAL,
+    clima_temperatura_c REAL,
+    clima_sensacao_termica_c REAL,
+    clima_umidade_pct REAL,
+    clima_ponto_orvalho_c REAL,
+    clima_vento_kmh REAL,
+    clima_precipitacao_mm REAL,
+    clima_codigo_tempo INTEGER,
+    clima_buscado_em TEXT,
+    fit_lido_em TEXT
+  );
+  `,
 ];
 
 export const VERSAO_ESQUEMA = MIGRACOES.length;
+
+export const COLUNAS_TREINO_METRICAS = [
+  'treino_realizado_id', 'hora_inicio', 'latitude', 'longitude', 'cadencia_media_ppm', 'cadencia_max_ppm',
+  'potencia_media_w', 'potencia_normalizada_w', 'oscilacao_vertical_mm', 'razao_vertical_pct',
+  'tempo_contato_solo_ms', 'comprimento_passada_m', 'calorias', 'temperatura_relogio_c', 'descida_m',
+  'efeito_treino_aerobico', 'efeito_treino_anaerobico', 'carga_treino', 'desacoplamento_pct',
+  'clima_temperatura_c', 'clima_sensacao_termica_c', 'clima_umidade_pct', 'clima_ponto_orvalho_c',
+  'clima_vento_kmh', 'clima_precipitacao_mm', 'clima_codigo_tempo', 'clima_buscado_em', 'fit_lido_em',
+] as const;
 
 // Tabelas que entram no backup, na ordem de inserção (pais antes dos
 // filhos), com a lista fechada de colunas — o restore só aceita essas
@@ -145,6 +188,7 @@ export const TABELAS_BACKUP: Record<string, readonly string[]> = {
     'id', 'treino_realizado_id', 'ordem', 'tipo', 'repeticao_numero', 'tempo_segundos', 'distancia_km',
     'pace_medio', 'fc_media',
   ],
+  treino_metricas: COLUNAS_TREINO_METRICAS,
 };
 
 // Divide um bloco de migração em comandos — os drivers executam um por vez.
