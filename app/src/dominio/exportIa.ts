@@ -1,3 +1,4 @@
+import { ResumoBemEstarDia } from './bemEstar';
 import { descreverTempo } from './clima';
 import { calcularCustoEsforco, indiceCustoRelativo } from './custoEsforco';
 
@@ -47,6 +48,7 @@ export interface ContextoExport {
   periodo: string; // ex: "últimas 8 semanas"
   ciclo?: { nome: string; dataInicio: string; dataFim: string } | null;
   provaAlvo?: { nome: string; data: string; distanciaKm: number | null; metaTempoSegundos: number | null } | null;
+  bemEstar?: ResumoBemEstarDia[];
 }
 
 const vazio = (v: unknown): string => (v === null || v === undefined || v === '' ? '' : String(v));
@@ -89,6 +91,8 @@ function linhaIntervalos(intervalos: IntervaloParaExport[]): string {
 
 export function montarExportIa(treinosEntrada: TreinoParaExport[], contexto: ContextoExport): string {
   const treinos = [...treinosEntrada].sort((a, b) => a.data.localeCompare(b.data));
+  const bemEstar = contexto.bemEstar ?? [];
+  const bemEstarDoDia = new Map(bemEstar.map((b) => [b.data, b]));
 
   // Custo ajustado de cada treino e índice contra o histórico ANTERIOR do
   // mesmo tipo (100 = típico).
@@ -152,7 +156,8 @@ export function montarExportIa(treinosEntrada: TreinoParaExport[], contexto: Con
   saida.push('', '## Treinos', '```csv');
   saida.push(
     'data;tipo;plano;pace_alvo;km;tempo;pace;fc;fc_max;subida_m;cad_ppm;pot_w;te_aer;te_anaer;desac_pct;' +
-      'temp_c;sens_termica_c;umid_pct;vento_kmh;condicao;rpe;bpm_km_aj;custo_idx;sensacoes;nota',
+      'temp_c;sens_termica_c;umid_pct;vento_kmh;condicao;rpe;bpm_km_aj;custo_idx;sensacoes;nota;' +
+      'sono_h;hrv_noite;bb_max',
   );
   for (const { t, custo, indice, tipo } of linhas) {
     const paceAlvo = t.paceAlvoMin ? `${t.paceAlvoMin}${t.paceAlvoMax ? `-${t.paceAlvoMax}` : ''}` : '';
@@ -183,10 +188,28 @@ export function montarExportIa(treinosEntrada: TreinoParaExport[], contexto: Con
         vazio(indice),
         t.sensacoes.join(','),
         limpar(t.feedbackTexto),
+        vazio(bemEstarDoDia.get(t.data)?.sonoHoras),
+        vazio(bemEstarDoDia.get(t.data)?.hrvNoite),
+        vazio(bemEstarDoDia.get(t.data)?.bodyBatteryMax),
       ].join(';'),
     );
   }
   saida.push('```');
+
+  const diasComDados = bemEstar.filter((b) => Object.entries(b).some(([k, v]) => k !== 'data' && v !== null));
+  if (diasComDados.length > 0) {
+    saida.push('', '## Recuperação diária (Garmin)', '```csv');
+    saida.push('data;sono_h;sono_score;hrv_noite;hrv_status;stress_medio;bb_max;bb_min;fc_repouso;vo2max');
+    for (const b of diasComDados) {
+      saida.push(
+        [b.data, b.sonoHoras, b.sonoScore, b.hrvNoite, b.hrvStatus, b.stressMedio, b.bodyBatteryMax, b.bodyBatteryMin,
+          b.fcRepouso, b.vo2max]
+          .map(vazio)
+          .join(';'),
+      );
+    }
+    saida.push('```');
+  }
 
   const comIntervalos = linhas.filter(({ t }) => t.intervalos.length > 1);
   if (comIntervalos.length > 0) {
@@ -203,6 +226,7 @@ export function montarExportIa(treinosEntrada: TreinoParaExport[], contexto: Con
     '- bpm_km_aj = batimentos por km ajustados por subida (~1% a cada 10 m/km) e calor (~1% por °C acima de 15 °C).',
     '- custo_idx = bpm_km_aj comparado com a mediana dos treinos anteriores do mesmo tipo (100 = típico; 110 = custou 10% mais). Vazio se houver menos de 3 treinos para comparar.',
     '- Clima na hora do meio do treino; temperatura do ar, não a do relógio.',
+    '- sono_h/hrv_noite/bb_max nos treinos = noite anterior ao treino (dia do registro na Garmin). bb = Body Battery (0-100).',
     '',
     '## O que eu quero de você',
     'Você é meu treinador de corrida. Analise a evolução, a relação entre clima, esforço percebido e custo cardíaco, ' +

@@ -2,6 +2,7 @@ import { obterBanco } from '../db/banco';
 import { montarExportIa, TreinoParaExport } from '../dominio/exportIa';
 import { provaAlvoDoCiclo } from '../types/modelo';
 import { buscarCicloAtivo } from './ciclos';
+import { listarBemEstar } from './bemEstar';
 import { agruparPor, LinhaIntervaloRealizado, somarDias } from './linhas';
 
 // v2: junta treinos, previsto, métricas do FIT, clima e feedback do
@@ -110,6 +111,7 @@ export async function gerarExportIa(semanas: number | null, agora = new Date()):
   const prova = ciclo ? provaAlvoDoCiclo(ciclo) : null;
   return montarExportIa(treinos, {
     geradoEm: agora.toISOString(),
+    bemEstar: await listarBemEstar(desde),
     periodo: semanas === null ? 'todo o histórico' : `últimas ${semanas} semanas`,
     ciclo: ciclo ? { nome: ciclo.nome, dataInicio: ciclo.dataInicio, dataFim: ciclo.dataFim } : null,
     provaAlvo: prova

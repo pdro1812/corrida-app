@@ -9,6 +9,8 @@ import {
 } from '../dominio/garmin';
 import { extrairMetricasDoFit, MetricasFit } from '../dominio/metricasFit';
 import { completarClimaPendente, gravarMetricasFit, treinosSemMetricas } from './metricas';
+import { sincronizarBemEstar } from './bemEstar';
+import { descreverEstrutura, FONTES_BEM_ESTAR } from '../dominio/bemEstar';
 import { ResultadoSincronizacao } from '../types/modelo';
 import { gravarConfiguracao, lerConfiguracao, obterChaveGarmin } from './configuracoes';
 import { agoraIso, novoId, somarDias } from './linhas';
@@ -174,6 +176,33 @@ async function completarMetricasAntigas(banco: Banco, limite = 10): Promise<numb
   return completados;
 }
 
+async function buscarJsonGarmin(caminho: string): Promise<unknown> {
+  return (await getGarmin(caminho)).json();
+}
+
+// v2: testa cada endpoint de recuperação com a chave do usuário e devolve
+// só o status HTTP e a estrutura (nomes de campos), nunca os valores.
+export async function diagnosticarBemEstar(): Promise<string> {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const inicio = somarDias(hoje, -2);
+  const linhas: string[] = [`Diagnóstico Garmin Personal API (${inicio} a ${hoje})`];
+  for (const [fonte, caminho] of Object.entries(FONTES_BEM_ESTAR)) {
+    const rota = caminho(inicio, hoje).split('?')[0];
+    try {
+      const resposta = await fetch(URL_BASE + caminho(inicio, hoje), {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${await obterToken()}` },
+        signal: comTimeout(),
+      });
+      const corpo: unknown = resposta.ok ? await resposta.json().catch(() => 'não-JSON') : null;
+      linhas.push(`\n## ${fonte}: HTTP ${resposta.status} ${rota}`);
+      if (corpo !== null) linhas.push(descreverEstrutura(corpo));
+    } catch (erro) {
+      linhas.push(`\n## ${fonte}: falhou (${erro instanceof GarminError ? erro.message : 'rede'}) ${rota}`);
+    }
+  }
+  return linhas.join('\n');
+}
+
 async function buscarJsonClima(url: string): Promise<unknown> {
   const resposta = await fetch(url, { headers: { Accept: 'application/json' }, signal: comTimeout() });
   if (!resposta.ok) throw new Error(`Open-Meteo respondeu HTTP ${resposta.status}`);
@@ -237,6 +266,7 @@ export async function sincronizarGarmin(limite = 20): Promise<ResultadoSincroniz
     // Etapas da v2: não podem derrubar o sync principal.
     await completarMetricasAntigas(banco).catch(() => 0);
     await completarClimaPendente(banco, buscarJsonClima).catch(() => 0);
+    await sincronizarBemEstar(banco, buscarJsonGarmin).catch(() => ({}));
     await gravarConfiguracao(CONFIG_ULTIMA_SINCRONIZACAO, agoraIso());
     return {
       ok: true,

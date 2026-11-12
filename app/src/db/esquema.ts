@@ -147,6 +147,18 @@ const MIGRACOES: string[] = [
     fit_lido_em TEXT
   );
   `,
+  // v2: recuperação diária da Garmin (sono, HRV, stress, Body Battery,
+  // resumo, VO2max). JSON podado por dia e fonte; a leitura fica em
+  // dominio/bemEstar.ts.
+  `
+  CREATE TABLE bem_estar_dia (
+    data TEXT NOT NULL,
+    fonte TEXT NOT NULL,
+    json TEXT NOT NULL,
+    buscado_em TEXT NOT NULL,
+    PRIMARY KEY (data, fonte)
+  );
+  `,
 ];
 
 export const VERSAO_ESQUEMA = MIGRACOES.length;
@@ -189,6 +201,7 @@ export const TABELAS_BACKUP: Record<string, readonly string[]> = {
     'pace_medio', 'fc_media',
   ],
   treino_metricas: COLUNAS_TREINO_METRICAS,
+  bem_estar_dia: ['data', 'fonte', 'json', 'buscado_em'],
 };
 
 // Divide um bloco de migração em comandos — os drivers executam um por vez.

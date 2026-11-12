@@ -9,7 +9,7 @@ import { TextField } from '../components/TextField';
 import { Chip } from '../components/Chip';
 import { gerarExportIa } from '../services/exportIa';
 import { obterChaveGarmin, removerChaveGarmin, salvarChaveGarmin } from '../services/configuracoes';
-import { esquecerTokenGarmin, ultimaSincronizacao } from '../services/sync';
+import { diagnosticarBemEstar, esquecerTokenGarmin, ultimaSincronizacao } from '../services/sync';
 import { escolherArquivoTexto, salvarBackupNoCelular, salvarTextoNoCelular } from '../services/arquivos';
 import { restaurarBackup, ResumoBackup } from '../services/backup';
 import { espacamento, tipografia } from '../theme/theme';
@@ -33,7 +33,7 @@ export function ConfiguracoesScreen() {
   const [temChave, setTemChave] = useState(false);
   const [novaChave, setNovaChave] = useState('');
   const [ultimaSync, setUltimaSync] = useState<string | null>(null);
-  const [ocupado, setOcupado] = useState<'chave' | 'exportar' | 'restaurar' | 'ia' | null>(null);
+  const [ocupado, setOcupado] = useState<'chave' | 'exportar' | 'restaurar' | 'ia' | 'diagnostico' | null>(null);
   const [semanasExport, setSemanasExport] = useState<number | null>(8);
   const [mensagem, setMensagem] = useState<Mensagem | null>(null);
 
@@ -114,6 +114,20 @@ export function ConfiguracoesScreen() {
     }
   }
 
+  // Mostra quais dados de saúde a chave libera (status + nomes de campos,
+  // sem valores) para ajustar a leitura de sono/HRV/Body Battery.
+  async function diagnosticar() {
+    setOcupado('diagnostico');
+    setMensagem(null);
+    try {
+      await Share.share({ title: 'Diagnóstico Garmin', message: await diagnosticarBemEstar() });
+    } catch (erro) {
+      setMensagem({ tipo: 'erro', titulo: 'Diagnóstico falhou', mensagem: mensagemDeErro(erro) });
+    } finally {
+      setOcupado(null);
+    }
+  }
+
   async function restaurar() {
     setOcupado('restaurar');
     setMensagem(null);
@@ -180,6 +194,14 @@ export function ConfiguracoesScreen() {
             carregando={ocupado === 'chave'}
             desabilitado={!novaChave.trim()}
           />
+          {temChave ? (
+            <Button
+              titulo="Testar dados de saúde (sono, HRV...)"
+              variante="secundaria"
+              onPress={() => void diagnosticar()}
+              carregando={ocupado === 'diagnostico'}
+            />
+          ) : null}
           {temChave ? <Button titulo="Remover chave" variante="perigo" onPress={confirmarRemoverChave} /> : null}
         </View>
       </Card>

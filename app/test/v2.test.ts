@@ -14,6 +14,8 @@ import { completarClimaPendente, gravarMetricasFit } from '../src/services/metri
 import { listarTreinosSemRpe } from '../src/services/rpe';
 import { montarExportIa, TreinoParaExport } from '../src/dominio/exportIa';
 import { gerarExportIa } from '../src/services/exportIa';
+import { descreverEstrutura, podarJson, resumirDia, separarPorDia } from '../src/dominio/bemEstar';
+import { listarBemEstar, sincronizarBemEstar } from '../src/services/bemEstar';
 import { criarBancoDeTeste } from './bancoDeTeste';
 
 // FIT sintético gerado com o Encoder do próprio SDK — sem dados reais.
@@ -257,7 +259,7 @@ describe('export para o Claude', () => {
     expect(md).toContain('# Meus treinos de corrida');
     const linhas = md.split('\n').filter((l) => /^2026-11-\d\d;rodagem;/.test(l));
     expect(linhas).toHaveLength(4);
-    expect(linhas[0].split(';')).toHaveLength(25); // mesmo número de colunas do cabeçalho
+    expect(linhas[0].split(';')).toHaveLength(28); // mesmo número de colunas do cabeçalho
     expect(linhas[0].split(';')[22]).toBe(''); // sem histórico ainda
     expect(linhas[3].split(';')[22]).toBe('110');
     expect(md).toContain('10 km fácil Z2'); // ';' e quebras de linha não quebram o CSV
@@ -295,5 +297,46 @@ describe('export para o Claude', () => {
     expect(md).toContain('2026-11-10;sem_plano');
     expect(md).not.toContain('2026-08-01;');
     expect(await gerarExportIa(null, new Date('2026-11-12T12:00:00Z'))).toContain('2026-08-01;sem_plano');
+  });
+});
+
+describe('bem-estar (sono, HRV, Body Battery)', () => {
+  it('separa por dia, poda séries e lê campos por nomes candidatos', () => {
+    const sono = [
+      { calendarDate: '2026-11-10', sleepTimeSeconds: 27000, overallSleepScore: { value: 82 }, epocas: Array(200).fill(1) },
+    ];
+    const hrv = { hrvSummaries: [{ calendarDate: '2026-11-10', lastNightAvg: 58, status: 'BALANCED' }] };
+    const dias = separarPorDia(sono);
+    expect([...dias.keys()]).toEqual(['2026-11-10']);
+    expect(podarJson(dias.get('2026-11-10'))).not.toHaveProperty('epocas');
+    expect(
+      resumirDia('2026-11-10', {
+        sono: dias.get('2026-11-10'),
+        hrv: separarPorDia(hrv).get('2026-11-10'),
+        resumo: { restingHeartRate: 48, bodyBatteryHighestValue: 90 },
+      }),
+    ).toMatchObject({ sonoHoras: 7.5, sonoScore: 82, hrvNoite: 58, hrvStatus: 'BALANCED', fcRepouso: 48, bodyBatteryMax: 90 });
+    expect(descreverEstrutura({ a: 1, b: [{ c: 'x' }] })).toBe('{ a: number, b: [1× { c: string }] }');
+  });
+
+  it('sincroniza todas as fontes, tolera fonte fora do ar e entra no export', async () => {
+    const banco = await criarBancoDeTeste();
+    const buscarJson = vi.fn(async (caminho: string) => {
+      if (caminho.startsWith('/hrv-service')) throw new Error('HTTP 404');
+      if (caminho.startsWith('/sleep-service')) return [{ calendarDate: '2026-11-11', sleepTimeSeconds: 25200 }];
+      return [];
+    });
+    const resultado = await sincronizarBemEstar(banco, buscarJson, '2026-11-12');
+    expect(resultado).toMatchObject({ sono: true, hrv: false });
+    expect(buscarJson.mock.calls[0][0]).toContain('startDate=2026-10-13&endDate=2026-11-12');
+    expect(await listarBemEstar('2026-11-01')).toMatchObject([{ data: '2026-11-11', sonoHoras: 7 }]);
+
+    // Próximo sync só pede os últimos dias (com sobreposição)
+    await sincronizarBemEstar(banco, buscarJson, '2026-11-13');
+    expect(buscarJson.mock.calls.at(-1)?.[0]).toContain('/2026-11-10/2026-11-13');
+
+    const md = await gerarExportIa(4, new Date('2026-11-12T12:00:00Z'));
+    expect(md).toContain('## Recuperação diária');
+    expect(md).toContain('2026-11-11;7;');
   });
 });
