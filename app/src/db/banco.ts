@@ -14,14 +14,114 @@ export interface Banco {
   transacao(fn: () => Promise<void>): Promise<void>;
 }
 
-const NOME_ARQUIVO = 'corrida.db';
+// v2: o banco é criptografado com SQLCipher (plugin do expo-sqlite com
+// `useSQLCipher`). A chave de 256 bits é gerada no aparelho e fica só no
+// SecureStore (Android Keystore) — nunca no banco, no backup ou em log.
+const ARQUIVO_ANTIGO = 'corrida.db'; // v1, sem criptografia
+const ARQUIVO_CRIPTO = 'corrida-cripto.db';
+const CHAVE_DO_BANCO = 'chave_banco_sqlcipher';
+const MARCA_MIGRADO = 'banco_criptografado_v1';
+
+// Tabelas conferidas depois da cópia para o arquivo criptografado.
+const TABELAS_CONFERIDAS = ['ciclo', 'treino_previsto', 'treino_realizado', 'configuracao'];
 
 let bancoPromise: Promise<Banco> | null = null;
 
-async function abrirExpoSqlite(): Promise<Banco> {
-  // Import dinâmico: os testes nunca carregam o módulo nativo.
+type BancoExpo = Awaited<ReturnType<typeof import('expo-sqlite').openDatabaseAsync>>;
+
+const paraHex = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+
+async function obterChaveDoBanco(): Promise<string> {
+  const SecureStore = await import('expo-secure-store');
+  const existente = await SecureStore.getItemAsync(CHAVE_DO_BANCO);
+  if (existente && /^[0-9a-f]{64}$/.test(existente)) return existente;
+  const { getRandomBytes } = await import('expo-crypto');
+  const nova = paraHex(getRandomBytes(32));
+  await SecureStore.setItemAsync(CHAVE_DO_BANCO, nova);
+  return nova;
+}
+
+// Chave "crua" em hex: o SQLCipher pula a derivação (PBKDF2), abre rápido.
+const pragmaChave = (hex: string) => `"x'${hex}'"`;
+
+async function abrirCriptografado(hex: string): Promise<BancoExpo> {
   const SQLite = await import('expo-sqlite');
-  const db = await SQLite.openDatabaseAsync(NOME_ARQUIVO);
+  const db = await SQLite.openDatabaseAsync(ARQUIVO_CRIPTO);
+  await db.execAsync(`PRAGMA key = ${pragmaChave(hex)};`);
+  await db.getFirstAsync('SELECT count(*) FROM sqlite_master'); // falha aqui se a chave estiver errada
+  return db;
+}
+
+async function contar(db: BancoExpo, prefixo = ''): Promise<Record<string, number>> {
+  const contagens: Record<string, number> = {};
+  for (const tabela of TABELAS_CONFERIDAS) {
+    const existe = await db.getFirstAsync<{ n: number }>(
+      `SELECT count(*) AS n FROM ${prefixo}sqlite_master WHERE type = 'table' AND name = ?`,
+      [tabela],
+    );
+    if (!existe?.n) continue;
+    // Nome de tabela vem da lista fixa acima.
+    const linha = await db.getFirstAsync<{ n: number }>(`SELECT count(*) AS n FROM ${prefixo}${tabela}`);
+    contagens[tabela] = linha?.n ?? 0;
+  }
+  return contagens;
+}
+
+// Copia o banco antigo (sem criptografia) para o arquivo criptografado com
+// sqlcipher_export, confere as contagens e só então apaga o antigo. Se
+// qualquer passo falhar, o antigo fica intacto e o app segue usando ele.
+async function migrarParaCriptografado(hex: string): Promise<BancoExpo> {
+  const SQLite = await import('expo-sqlite');
+  const SecureStore = await import('expo-secure-store');
+  const antigo = await SQLite.openDatabaseAsync(ARQUIVO_ANTIGO);
+  const pasta = String(SQLite.defaultDatabaseDirectory).replace(/^file:\/\//, '');
+  try {
+    await SQLite.deleteDatabaseAsync(ARQUIVO_CRIPTO).catch(() => undefined); // sobra de tentativa anterior
+    await antigo.execAsync('PRAGMA wal_checkpoint(TRUNCATE);');
+    const versao = (await antigo.getFirstAsync<{ user_version: number }>('PRAGMA user_version'))?.user_version ?? 0;
+    const esperado = await contar(antigo);
+    await antigo.execAsync(`ATTACH DATABASE '${pasta}/${ARQUIVO_CRIPTO}' AS cripto KEY ${pragmaChave(hex)};`);
+    await antigo.execAsync(`SELECT sqlcipher_export('cripto'); PRAGMA cripto.user_version = ${Number(versao)};`);
+    const copiado = await contar(antigo, 'cripto.');
+    await antigo.execAsync('DETACH DATABASE cripto;');
+    if (JSON.stringify(copiado) !== JSON.stringify(esperado)) throw new Error('Cópia criptografada incompleta');
+  } catch (erro) {
+    await antigo.closeAsync().catch(() => undefined);
+    await SQLite.deleteDatabaseAsync(ARQUIVO_CRIPTO).catch(() => undefined);
+    throw erro;
+  }
+  await antigo.closeAsync();
+  const db = await abrirCriptografado(hex);
+  await SecureStore.setItemAsync(MARCA_MIGRADO, '1');
+  await SQLite.deleteDatabaseAsync(ARQUIVO_ANTIGO).catch(() => undefined);
+  return db;
+}
+
+async function abrirSemCriptografia(): Promise<BancoExpo> {
+  const SQLite = await import('expo-sqlite');
+  return SQLite.openDatabaseAsync(ARQUIVO_ANTIGO);
+}
+
+async function abrirExpoSqlite(): Promise<Banco> {
+  // Imports dinâmicos: os testes nunca carregam os módulos nativos.
+  const { Platform } = await import('react-native');
+  let db: BancoExpo;
+  if (Platform.OS === 'web') {
+    // Só para testar telas no navegador: lá não há SecureStore nem
+    // SQLCipher. O app de verdade (Android) sempre usa o banco criptografado.
+    db = await abrirSemCriptografia();
+  } else if ((await (await import('expo-secure-store')).getItemAsync(MARCA_MIGRADO)) === '1') {
+    const hex = await obterChaveDoBanco();
+    db = await abrirCriptografado(hex);
+  } else {
+    try {
+      db = await migrarParaCriptografado(await obterChaveDoBanco());
+    } catch {
+      // Ex: APK antigo sem SQLCipher. Nada se perde: segue no arquivo antigo
+      // e tenta de novo na próxima abertura.
+      db = await abrirSemCriptografia();
+    }
+  }
   await db.execAsync('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
 
   const banco: Banco = {

@@ -130,5 +130,7 @@ export interface ResultadoSincronizacao {
   atividadesImportadas: number;
   atividadesJaExistentes: number;
   treinosCasadosComPrevisto: number;
+  // v2: treinos novos deste sync (para pedir o RPE).
+  idsImportados?: string[];
   erro?: string;
 }

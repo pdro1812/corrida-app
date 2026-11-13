@@ -40,13 +40,13 @@ const ESTILOS_POR_VARIANTE = {
     container: {
       backgroundColor: cores.primaria,
       ...Platform.select({
-        web: { boxShadow: '0 2px 6px rgba(37, 99, 235, 0.25)' },
+        web: { boxShadow: '0 0 18px rgba(34, 211, 238, 0.45)' },
         default: {
-          shadowColor: cores.primariaEscura,
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.25,
-          shadowRadius: 4,
-          elevation: 2,
+          shadowColor: cores.brilho,
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.6,
+          shadowRadius: 10,
+          elevation: 6,
         },
       }),
     },

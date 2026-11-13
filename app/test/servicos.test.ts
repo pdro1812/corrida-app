@@ -225,7 +225,10 @@ describe('sincronização com a Garmin (fetch simulado)', () => {
       atividadesImportadas: 1,
       atividadesJaExistentes: 0,
       treinosCasadosComPrevisto: 1,
+      idsImportados: [expect.any(String)],
     });
+    // v2: o FIT de todo treino é lido e gera a linha de métricas
+    expect(await banco.todos('SELECT treino_realizado_id FROM treino_metricas')).toHaveLength(1);
 
     const treino = await buscarTreinoPrevisto(await idDoPrevisto('2026-10-08'));
     expect(treino.status).toBe('realizado');
