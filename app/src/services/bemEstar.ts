@@ -59,6 +59,11 @@ export async function listarBemEstar(desde: string): Promise<ResumoBemEstarDia[]
     } catch {
       // linha corrompida: ignora a fonte
     }
+    // Reaplica o enriquecimento: linhas gravadas antes dele também ganham
+    // máximo/mínimo do Body Battery.
+    if (valor && typeof valor === 'object' && !Array.isArray(valor)) {
+      valor = enriquecerRegistro(l.fonte, valor as Record<string, unknown>);
+    }
     porDia.set(l.data, { ...(porDia.get(l.data) ?? {}), [l.fonte]: valor });
   }
   return [...porDia].map(([data, fontes]) => resumirDia(data, fontes));
