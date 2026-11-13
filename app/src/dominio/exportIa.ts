@@ -181,11 +181,15 @@ export function montarExportIa(treinosEntrada: TreinoParaExport[], contexto: Con
   const diasComDados = bemEstar.filter((b) => Object.entries(b).some(([k, v]) => k !== 'data' && v !== null));
   if (diasComDados.length > 0) {
     saida.push('', '## Recuperação diária (Garmin)', '```csv');
-    saida.push('data;sono_h;sono_score;hrv_noite;hrv_status;stress_medio;bb_max;bb_min;fc_repouso;vo2max');
+    saida.push(
+      'data;sono_h;sono_score;profundo_min;rem_min;despertares;resp_sono;stress_sono;hrv_noite;hrv_semana;hrv_status;' +
+        'stress_medio;bb_max;bb_min;bb_carga;bb_gasto;fc_repouso;vo2max',
+    );
     for (const b of diasComDados) {
       saida.push(
-        [b.data, b.sonoHoras, b.sonoScore, b.hrvNoite, b.hrvStatus, b.stressMedio, b.bodyBatteryMax, b.bodyBatteryMin,
-          b.fcRepouso, b.vo2max]
+        [b.data, b.sonoHoras, b.sonoScore, b.sonoProfundoMin, b.sonoRemMin, b.despertares, b.respiracaoSono,
+          b.stressSono, b.hrvNoite, b.hrvSemanal, b.hrvStatus, b.stressMedio, b.bodyBatteryMax, b.bodyBatteryMin,
+          b.bodyBatteryCarregado, b.bodyBatteryGasto, b.fcRepouso, b.vo2max]
           .map(vazio)
           .join(';'),
       );

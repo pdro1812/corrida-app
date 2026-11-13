@@ -103,6 +103,29 @@ export interface ResumoBemEstarDia {
   bodyBatteryMin: number | null;
   fcRepouso: number | null;
   vo2max: number | null;
+  // Campos confirmados pelo diagnóstico de 2026-11-13.
+  sonoProfundoMin: number | null;
+  sonoRemMin: number | null;
+  despertares: number | null;
+  respiracaoSono: number | null; // respirações/min
+  stressSono: number | null;
+  hrvSemanal: number | null;
+  bodyBatteryCarregado: number | null;
+  bodyBatteryGasto: number | null;
+}
+
+// Body Battery diário não traz máximo/mínimo: vêm de
+// bodyBatteryValuesArray ([timestamp, nível]). Calculado antes da poda
+// (a série é cortada para economizar espaço).
+export function enriquecerRegistro(fonte: FonteBemEstar, registro: Objeto): Objeto {
+  if (fonte !== 'body_battery') return registro;
+  const serie = registro.bodyBatteryValuesArray;
+  if (!Array.isArray(serie)) return registro;
+  const niveis = serie
+    .map((par) => (Array.isArray(par) ? par[1] : null))
+    .filter((v): v is number => typeof v === 'number' && v >= 0 && v <= 100);
+  if (niveis.length === 0) return registro;
+  return { ...registro, bodyBatteryHighestValue: Math.max(...niveis), bodyBatteryLowestValue: Math.min(...niveis) };
 }
 
 export function resumirDia(data: string, porFonte: Partial<Record<FonteBemEstar, unknown>>): ResumoBemEstarDia {
@@ -111,6 +134,7 @@ export function resumirDia(data: string, porFonte: Partial<Record<FonteBemEstar,
     procurar(sono, ['sleepTimeSeconds', 'durationInSeconds', 'totalSleepSeconds', 'sleepDurationInSeconds']),
   );
   const arred = (v: number | null, casas = 0) => (v === null ? null : Number(v.toFixed(casas)));
+  const minutos = (segundos: number | null) => (segundos === null ? null : Math.round(segundos / 60));
   return {
     data,
     sonoHoras: segundosSono === null ? null : arred(segundosSono / 3600, 1),
@@ -134,6 +158,14 @@ export function resumirDia(data: string, porFonte: Partial<Record<FonteBemEstar,
         numero(procurar(hrv, ['restingHeartRate'])),
     ),
     vo2max: arred(numero(procurar(vo2max, ['vo2MaxPreciseValue', 'vo2MaxValue', 'vo2Max'])), 1),
+    sonoProfundoMin: minutos(numero(procurar(sono, ['deepSleepSeconds']))),
+    sonoRemMin: minutos(numero(procurar(sono, ['remSleepSeconds']))),
+    despertares: arred(numero(procurar(sono, ['awakeCount']))),
+    respiracaoSono: arred(numero(procurar(sono, ['averageRespirationValue'])), 1),
+    stressSono: arred(numero(procurar(sono, ['avgSleepStress']))),
+    hrvSemanal: arred(numero(procurar(hrv, ['weeklyAvg']))),
+    bodyBatteryCarregado: arred(numero(procurar(bb, ['charged']))),
+    bodyBatteryGasto: arred(numero(procurar(bb, ['drained']))),
   };
 }
 

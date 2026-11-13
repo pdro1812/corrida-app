@@ -2,6 +2,7 @@ import { Banco, obterBanco } from '../db/banco';
 import {
   FONTES_BEM_ESTAR,
   FonteBemEstar,
+  enriquecerRegistro,
   podarJson,
   resumirDia,
   ResumoBemEstarDia,
@@ -32,7 +33,7 @@ export async function sincronizarBemEstar(
         await banco.executar(
           `INSERT INTO bem_estar_dia (data, fonte, json, buscado_em) VALUES (?, ?, ?, ?)
            ON CONFLICT(data, fonte) DO UPDATE SET json = excluded.json, buscado_em = excluded.buscado_em`,
-          [data, fonte, JSON.stringify(podarJson(registro)), agoraIso()],
+          [data, fonte, JSON.stringify(podarJson(enriquecerRegistro(fonte, registro))), agoraIso()],
         );
       }
       resultado[fonte] = true;

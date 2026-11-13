@@ -14,7 +14,7 @@ import { completarClimaPendente, gravarMetricasFit } from '../src/services/metri
 import { listarTreinosSemRpe } from '../src/services/rpe';
 import { montarExportIa, TreinoParaExport } from '../src/dominio/exportIa';
 import { gerarExportIa } from '../src/services/exportIa';
-import { descreverEstrutura, podarJson, resumirDia, separarPorDia } from '../src/dominio/bemEstar';
+import { descreverEstrutura, enriquecerRegistro, podarJson, resumirDia, separarPorDia } from '../src/dominio/bemEstar';
 import { listarBemEstar, sincronizarBemEstar } from '../src/services/bemEstar';
 import { calcularProntidao } from '../src/dominio/analise';
 import { criarBancoDeTeste } from './bancoDeTeste';
@@ -354,6 +354,14 @@ describe('análise (Lab)', () => {
     bodyBatteryMin: null,
     fcRepouso: fc,
     vo2max: null,
+    sonoProfundoMin: null,
+    sonoRemMin: null,
+    despertares: null,
+    respiracaoSono: null,
+    stressSono: null,
+    hrvSemanal: null,
+    bodyBatteryCarregado: null,
+    bodyBatteryGasto: null,
   });
 
   it('compara a prontidão do último dia com a semana anterior', () => {
@@ -367,5 +375,59 @@ describe('análise (Lab)', () => {
       fcRepousoVariacao: 6,
     });
     expect(calcularProntidao([]).data).toBeNull();
+  });
+});
+
+describe('bem-estar com o formato real da Personal API (valores sintéticos)', () => {
+  it('lê sono, HRV, stress e Body Battery como o diagnóstico mostrou', () => {
+    const sono = [
+      {
+        calendarDate: '2026-11-12',
+        sleepTimeSeconds: 26400,
+        deepSleepSeconds: 5400,
+        remSleepSeconds: 6000,
+        awakeCount: 2,
+        averageRespirationValue: 14.2,
+        avgSleepStress: 18,
+        sleepScores: { totalDuration: { qualifierKey: 'GOOD' }, overall: { value: 81, qualifierKey: 'GOOD' } },
+        sleepNeed: { calendarDate: '2026-11-12', baseline: 480 },
+      },
+    ];
+    const hrv = { hrvSummaries: [{ calendarDate: '2026-11-12', weeklyAvg: 57, lastNightAvg: 52, status: 'BALANCED' }], userProfilePk: 1 };
+    const stress = [{ calendarDate: '2026-11-12', values: { overallStressLevel: 31, lowStressDuration: 100 } }];
+    const bb = [
+      {
+        date: '2026-11-12',
+        charged: 55,
+        drained: 60,
+        bodyBatteryValuesArray: [[1, 30], [2, 85], [3, 41]],
+      },
+    ];
+    const dia = (r: unknown) => separarPorDia(r).get('2026-11-12');
+    const bbDia = enriquecerRegistro('body_battery', dia(bb)!);
+    expect(
+      resumirDia('2026-11-12', {
+        sono: podarJson(dia(sono)),
+        hrv: dia(hrv),
+        stress: dia(stress),
+        body_battery: podarJson(bbDia),
+      }),
+    ).toMatchObject({
+      sonoHoras: 7.3,
+      sonoScore: 81,
+      sonoProfundoMin: 90,
+      sonoRemMin: 100,
+      despertares: 2,
+      respiracaoSono: 14.2,
+      stressSono: 18,
+      hrvNoite: 52,
+      hrvSemanal: 57,
+      hrvStatus: 'BALANCED',
+      stressMedio: 31,
+      bodyBatteryMax: 85,
+      bodyBatteryMin: 30,
+      bodyBatteryCarregado: 55,
+      bodyBatteryGasto: 60,
+    });
   });
 });
