@@ -159,6 +159,17 @@ const MIGRACOES: string[] = [
     PRIMARY KEY (data, fonte)
   );
   `,
+  // Export para IA: blocos do treino com métricas robustas, segmentos por
+  // km, trechos extras e histogramas de FC/pace (dominio/blocosFit.ts),
+  // guardados como JSON. `versao` permite recalcular quando a análise mudar.
+  `
+  CREATE TABLE treino_analise (
+    treino_realizado_id TEXT PRIMARY KEY REFERENCES treino_realizado(id) ON DELETE CASCADE,
+    versao INTEGER NOT NULL,
+    json TEXT NOT NULL,
+    gerado_em TEXT NOT NULL
+  );
+  `,
 ];
 
 export const VERSAO_ESQUEMA = MIGRACOES.length;
@@ -202,6 +213,7 @@ export const TABELAS_BACKUP: Record<string, readonly string[]> = {
   ],
   treino_metricas: COLUNAS_TREINO_METRICAS,
   bem_estar_dia: ['data', 'fonte', 'json', 'buscado_em'],
+  treino_analise: ['treino_realizado_id', 'versao', 'json', 'gerado_em'],
 };
 
 // Divide um bloco de migração em comandos — os drivers executam um por vez.

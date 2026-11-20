@@ -12,7 +12,6 @@ import {
 import { gerarBackup, restaurarBackup } from '../src/services/backup';
 import { completarClimaPendente, gravarMetricasFit } from '../src/services/metricas';
 import { listarTreinosSemRpe } from '../src/services/rpe';
-import { montarExportIa, TreinoParaExport } from '../src/dominio/exportIa';
 import { gerarExportIa } from '../src/services/exportIa';
 import { descreverEstrutura, enriquecerRegistro, podarJson, resumirDia, separarPorDia } from '../src/dominio/bemEstar';
 import { listarBemEstar, sincronizarBemEstar } from '../src/services/bemEstar';
@@ -220,87 +219,6 @@ describe('RPE pendente', () => {
   });
 });
 
-describe('export para o Claude', () => {
-  const treinoBase: TreinoParaExport = {
-    data: '2026-11-02',
-    tipoPrevisto: 'rodagem',
-    descricaoPrevista: '10 km fácil; Z2',
-    paceAlvoMin: '5:25',
-    paceAlvoMax: '5:50',
-    distanciaKm: 10,
-    duracaoSegundos: 3000,
-    paceMedio: '5:00',
-    fcMedia: 150,
-    fcMax: 165,
-    elevacaoM: 0,
-    rpe: 4,
-    sensacoes: ['bem_encaixado'],
-    feedbackTexto: 'tranquilo\nsem dor',
-    cadenciaPpm: 172,
-    potenciaW: 250,
-    efeitoAerobico: 3.1,
-    efeitoAnaerobico: 0.5,
-    desacoplamentoPct: 2.1,
-    temperaturaC: 15,
-    sensacaoTermicaC: 15,
-    umidadePct: 70,
-    ventoKmh: 8,
-    codigoTempo: 0,
-    intervalos: [],
-  };
-
-  it('gera Markdown compacto com custo relativo ao histórico do mesmo tipo', () => {
-    const treinos = [
-      treinoBase,
-      { ...treinoBase, data: '2026-11-04' },
-      { ...treinoBase, data: '2026-11-06' },
-      { ...treinoBase, data: '2026-11-09', fcMedia: 165, temperaturaC: 15 }, // 10% mais batimentos
-    ];
-    const md = montarExportIa(treinos, { geradoEm: '2026-11-12T10:00:00Z', periodo: 'últimas 4 semanas' });
-    expect(md).toContain('# Meus treinos de corrida');
-    const linhas = md.split('\n').filter((l) => /^2026-11-\d\d;rodagem;/.test(l));
-    expect(linhas).toHaveLength(4);
-    expect(linhas[0].split(';')).toHaveLength(28); // mesmo número de colunas do cabeçalho
-    expect(linhas[0].split(';')[22]).toBe(''); // sem histórico ainda
-    expect(linhas[3].split(';')[22]).toBe('110');
-    expect(md).toContain('10 km fácil Z2'); // ';' e quebras de linha não quebram o CSV
-    expect(md).toContain('2026-11-02;30.0;3;2:30:00;4.0;600'); // semana: km, treinos, tempo, rpe, carga
-    expect(md).toContain('2026-11-09;10.0;1');
-    expect(md).not.toMatch(/latitude|longitude|-29\./);
-  });
-
-  it('lista os intervalos dos treinos de qualidade', () => {
-    const md = montarExportIa(
-      [
-        {
-          ...treinoBase,
-          tipoPrevisto: 'qualidade',
-          intervalos: [
-            { tipo: 'warmup', distanciaKm: 2, tempoSegundos: 660, paceMedio: '5:30', fcMedia: 140 },
-            { tipo: 'run', distanciaKm: 1, tempoSegundos: 252, paceMedio: '4:12', fcMedia: 172 },
-          ],
-        },
-      ],
-      { geradoEm: '2026-11-12T10:00:00Z', periodo: 'tudo' },
-    );
-    expect(md).toContain('- 2026-11-02: aq 2.00km 11:00 5:30/km 140bpm | T 1.00km 4:12 4:12/km 172bpm');
-  });
-
-  it('busca no banco só o período pedido', async () => {
-    const banco = await criarBancoDeTeste();
-    for (const data of ['2026-11-10', '2026-08-01']) {
-      await banco.executar(
-        "INSERT INTO treino_realizado (id, data, distancia_km, duracao_segundos, fc_media, criado_em) VALUES (?, ?, 8, 2400, 150, 'x')",
-        [data, data],
-      );
-    }
-    const md = await gerarExportIa(4, new Date('2026-11-12T12:00:00Z'));
-    expect(md).toContain('2026-11-10;sem_plano');
-    expect(md).not.toContain('2026-08-01;');
-    expect(await gerarExportIa(null, new Date('2026-11-12T12:00:00Z'))).toContain('2026-08-01;sem_plano');
-  });
-});
-
 describe('bem-estar (sono, HRV, Body Battery)', () => {
   it('separa por dia, poda séries e lê campos por nomes candidatos', () => {
     const sono = [
@@ -336,9 +254,9 @@ describe('bem-estar (sono, HRV, Body Battery)', () => {
     await sincronizarBemEstar(banco, buscarJson, '2026-11-13');
     expect(buscarJson.mock.calls.at(-1)?.[0]).toContain('/2026-11-10/2026-11-13');
 
-    const md = await gerarExportIa(4, new Date('2026-11-12T12:00:00Z'));
-    expect(md).toContain('## Recuperação diária');
-    expect(md).toContain('2026-11-11;7;');
+    const texto = await gerarExportIa(4, new Date('2026-11-12T12:00:00Z'));
+    const json = JSON.parse(texto.slice(texto.indexOf('{'), texto.lastIndexOf('}') + 1));
+    expect(json.dias).toContainEqual({ data: '2026-11-11', ctx: { sono: { h: 7 } } });
   });
 });
 
