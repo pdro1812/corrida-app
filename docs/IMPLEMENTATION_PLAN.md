@@ -62,6 +62,7 @@ uma base visual mínima (não existia nenhuma até agora — telas eram só
 
 - [ ] CI/CD com deploy real configurado (Railway/Render + EAS Build) — resolve RNF02 (HTTPS) via TLS automático do provedor
 - [ ] Export manual de dados sob demanda (RNF07) — endpoint + botão simples pra baixar um dump/export do banco
+- [x] Export para análise por IA em grafo (contexto, proposto e executado por bloco), com métricas robustas no lugar de mín/máx e trechos não planejados separados (`dominio/blocosFit.ts`, `dominio/exportGrafo.ts`)
 - [ ] Testar fluxo completo: import de planilha → sync Garmin → comparação → feedback
 - [ ] Revisar todos os RF/RNF de `docs/REQUIREMENTS.md` contra o que foi implementado
 

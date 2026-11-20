@@ -8,7 +8,8 @@ import {
   mapearLapsParaIntervalos,
 } from '../dominio/garmin';
 import { extrairMetricasDoFit, MetricasFit } from '../dominio/metricasFit';
-import { completarClimaPendente, gravarMetricasFit, treinosSemMetricas } from './metricas';
+import { AnaliseTreino, analiseVazia, extrairAnaliseDoFit } from '../dominio/blocosFit';
+import { completarClimaPendente, gravarAnalise, gravarMetricasFit, treinosSemMetricas } from './metricas';
 import { sincronizarBemEstar } from './bemEstar';
 import { descreverEstrutura, FONTES_BEM_ESTAR } from '../dominio/bemEstar';
 import { ResultadoSincronizacao } from '../types/modelo';
@@ -110,17 +111,24 @@ async function baixarFit(activityId: number | string): Promise<Uint8Array | null
 }
 
 function lerFit(fit: Uint8Array | null) {
-  if (!fit) return { laps: [], metricas: null };
+  const vazio = { laps: [], metricas: null, analise: null };
+  if (!fit) return vazio;
   try {
-    return { laps: extrairLapsDoFit(fit), metricas: extrairMetricasDoFit(fit) as MetricasFit | null };
+    let analise: AnaliseTreino | null = null;
+    try {
+      analise = extrairAnaliseDoFit(fit);
+    } catch {
+      // análise por blocos é opcional: não pode impedir laps e métricas
+    }
+    return { laps: extrairLapsDoFit(fit), metricas: extrairMetricasDoFit(fit) as MetricasFit | null, analise };
   } catch {
-    return { laps: [], metricas: null };
+    return vazio;
   }
 }
 
 async function importarAtividade(banco: Banco, atividade: AtividadeGarmin): Promise<string> {
   const dados = mapearAtividade(atividade);
-  const { laps, metricas } = lerFit(await baixarFit(atividade.activityId));
+  const { laps, metricas, analise } = lerFit(await baixarFit(atividade.activityId));
   const intervalos = (atividade.lapCount ?? 0) > 1 ? mapearLapsParaIntervalos(laps) : [];
   const id = novoId();
   await banco.transacao(async () => {
@@ -160,17 +168,21 @@ async function importarAtividade(banco: Banco, atividade: AtividadeGarmin): Prom
       );
     }
     if (metricas) await gravarMetricasFit(banco, id, metricas);
+    // FIT lido sem amostras: grava análise vazia para não baixar de novo.
+    if (metricas || analise) await gravarAnalise(banco, id, analise ?? analiseVazia());
   });
   return id;
 }
 
-// v2: treinos importados antes das métricas completas ganham o FIT lido.
+// v2: treinos importados antes das métricas completas (ou da análise por
+// blocos) ganham o FIT lido de novo.
 async function completarMetricasAntigas(banco: Banco, limite = 10): Promise<number> {
   let completados = 0;
   for (const treino of await treinosSemMetricas(banco, limite)) {
-    const { metricas } = lerFit(await baixarFit(treino.garmin_activity_id));
-    if (!metricas) continue;
-    await gravarMetricasFit(banco, treino.id, metricas);
+    const { metricas, analise } = lerFit(await baixarFit(treino.garmin_activity_id));
+    if (!metricas && !analise) continue;
+    if (metricas) await gravarMetricasFit(banco, treino.id, metricas);
+    await gravarAnalise(banco, treino.id, analise ?? analiseVazia());
     completados++;
   }
   return completados;
