@@ -10,6 +10,9 @@ import { blocoDaData, blocosDasFases, gerarBlocosPadrao, posicaoNoBloco } from '
 import { criarBloco, gerarBlocosDoCiclo, listarBlocos } from '../src/services/blocosCiclo';
 import { melhorTrecho } from '../src/dominio/melhorTrecho';
 import { buscarCandidatosRecorde, criarRecorde } from '../src/services/recordes';
+import { lerHorarios, precisaSincronizar, ultimoHorarioAgendado } from '../src/dominio/agendaSync';
+import { lerAgendaSync, salvarAgendaSync, sincronizarSeAgendado } from '../src/services/syncAutomatico';
+import { gravarConfiguracao, salvarChaveGarmin } from '../src/services/configuracoes';
 import { criarBancoDeTeste } from './bancoDeTeste';
 
 describe('copiar previsto', () => {
@@ -171,5 +174,34 @@ describe('importar recordes', () => {
     expect(semGarmin).toMatchObject({ erroGarmin: 'fora do ar', candidatos: [{ garminActivityId: '1' }] });
     await criarRecorde({ distanciaKm: '10', tempo: '45:00', data: '2026-09-10', garminActivityId: '1' });
     expect((await gerarBackup()).tabelas.recorde_pessoal).toMatchObject([{ garmin_activity_id: '1' }]);
+  });
+});
+
+describe('sync automático por horário', () => {
+  const em = (dia: number, hora: number, minuto = 0) => new Date(2026, 10, dia, hora, minuto);
+
+  it('lê e valida os horários', () => {
+    expect(lerHorarios('20:00, 8')).toEqual(['08:00', '20:00']);
+    expect(() => lerHorarios('25:00')).toThrow('HH:MM');
+  });
+
+  it('sincroniza depois de cada horário, uma vez', () => {
+    const h = ['08:00', '20:00'];
+    expect(ultimoHorarioAgendado(em(27, 7), h)).toEqual(em(26, 20));
+    expect(precisaSincronizar(em(27, 8, 30), em(27, 7).toISOString(), h)).toBe(true);
+    expect(precisaSincronizar(em(27, 9), em(27, 8, 30).toISOString(), h)).toBe(false);
+    expect(precisaSincronizar(em(27, 20, 5), em(27, 8, 30).toISOString(), h)).toBe(true);
+    expect(precisaSincronizar(em(27, 9), null, h)).toBe(true);
+  });
+
+  it('guarda a agenda e não sincroniza sem um horário vencido', async () => {
+    await criarBancoDeTeste();
+    expect(await lerAgendaSync()).toEqual({ horarios: ['08:00', '20:00'], segundoPlano: true });
+    await expect(salvarAgendaSync('', true)).rejects.toThrow('pelo menos um');
+    expect(await salvarAgendaSync('6:30', false)).toEqual({ horarios: ['06:30'], segundoPlano: false });
+    expect(await sincronizarSeAgendado(em(27, 7))).toBeNull(); // sem chave da Garmin
+    await salvarChaveGarmin('chave');
+    await gravarConfiguracao('ultima_sincronizacao_garmin', em(27, 6, 40).toISOString());
+    expect(await sincronizarSeAgendado(em(27, 7))).toBeNull(); // já sincronizou depois das 06:30
   });
 });

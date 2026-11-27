@@ -7,6 +7,7 @@ import { Button } from '../components/Button';
 import { Banner } from '../components/Banner';
 import { TextField } from '../components/TextField';
 import { Chip } from '../components/Chip';
+import { SyncAutomaticoCard } from '../components/SyncAutomaticoCard';
 import { gerarExportIa, lerLimiares, salvarLimiares } from '../services/exportIa';
 import { obterChaveGarmin, removerChaveGarmin, salvarChaveGarmin } from '../services/configuracoes';
 import { diagnosticarBemEstar, esquecerTokenGarmin, ultimaSincronizacao } from '../services/sync';
@@ -223,6 +224,8 @@ export function ConfiguracoesScreen() {
           {temChave ? <Button titulo="Remover chave" variante="perigo" onPress={confirmarRemoverChave} /> : null}
         </View>
       </Card>
+
+      <SyncAutomaticoCard onAviso={setMensagem} />
 
 
       <Card style={styles.card}>

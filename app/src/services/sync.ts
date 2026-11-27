@@ -316,15 +316,6 @@ export async function sincronizarGarmin(limite = 20): Promise<ResultadoSincroniz
   }
 }
 
-// Substitui o antigo cron diário: ao abrir o app, sincroniza se a última
-// sincronização tiver mais de `horas` horas (e houver chave configurada).
-export async function sincronizarSeNecessario(horas = 12): Promise<ResultadoSincronizacao | null> {
-  if (!(await obterChaveGarmin())) return null;
-  const ultima = await lerConfiguracao(CONFIG_ULTIMA_SINCRONIZACAO);
-  if (ultima && Date.now() - Date.parse(ultima) < horas * 60 * 60 * 1000) return null;
-  return sincronizarGarmin();
-}
-
 export async function ultimaSincronizacao(): Promise<string | null> {
   return lerConfiguracao(CONFIG_ULTIMA_SINCRONIZACAO);
 }

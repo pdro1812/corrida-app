@@ -19,8 +19,8 @@ import { AvaliarTreinoScreen } from './src/screens/AvaliarTreinoScreen';
 import { CicloScreen } from './src/screens/CicloScreen';
 import { TreinosScreen } from './src/screens/TreinosScreen';
 import { AnaliseScreen } from './src/screens/AnaliseScreen';
-import { sincronizarSeNecessario } from './src/services/sync';
-import { listarTreinosSemRpe } from './src/services/rpe';
+import { sincronizarSeAgendado } from './src/services/syncAutomatico';
+import { aplicarTarefaSync } from './src/services/tarefaSync';
 import { aoTocarNotificacaoRpe, notificarRpePendente } from './src/services/notificacoes';
 import { cores } from './src/theme/theme';
 
@@ -105,18 +105,12 @@ function Abas() {
 }
 
 export default function App() {
-  // Substitui o antigo cron diário do backend: ao abrir o app, sincroniza
-  // com a Garmin se a última sincronização tiver mais de 12h. Silencioso —
-  // o resultado aparece nas telas quando elas recarregam.
+  // Ao abrir o app: sincroniza se já passou um horário agendado (08:00 e
+  // 20:00 por padrão) sem sync, e avisa os treinos sem esforço registrado.
+  // A tarefa em segundo plano faz o mesmo com o app fechado.
   useEffect(() => {
-    void sincronizarSeNecessario()
-      .then(async (resultado) => {
-        // Uma notificação por treino sem RPE que ainda não foi avisado.
-        if (resultado?.ok) {
-          await notificarRpePendente(await listarTreinosSemRpe());
-        }
-      })
-      .catch(() => undefined);
+    void sincronizarSeAgendado(new Date(), notificarRpePendente).catch(() => undefined);
+    void aplicarTarefaSync().catch(() => false);
     return aoTocarNotificacaoRpe(abrirAvaliacao);
   }, []);
 
