@@ -8,6 +8,8 @@ import { criarCiclo } from '../src/services/ciclos';
 import { montarPerfil } from '../src/dominio/bancoAnalise';
 import { blocoDaData, blocosDasFases, gerarBlocosPadrao, posicaoNoBloco } from '../src/dominio/blocosCiclo';
 import { criarBloco, gerarBlocosDoCiclo, listarBlocos } from '../src/services/blocosCiclo';
+import { melhorTrecho } from '../src/dominio/melhorTrecho';
+import { buscarCandidatosRecorde, criarRecorde } from '../src/services/recordes';
 import { criarBancoDeTeste } from './bancoDeTeste';
 
 describe('copiar previsto', () => {
@@ -130,5 +132,44 @@ describe('blocos do ciclo', () => {
     await expect(criarBloco(ciclo.id, { nome: 'X', tipo: 'base', dataInicio: '2027-02-01', dataFim: '2027-01-01' })).rejects.toThrow('antes do início');
     expect((await listarBlocos(ciclo.id)).map((b) => b.ordem)).toEqual([1, 2, 3, 4]);
     expect((await gerarBackup()).tabelas.bloco_ciclo).toHaveLength(4);
+  });
+});
+
+describe('importar recordes', () => {
+  it('acha o trecho mais rápido de uma distância dentro da corrida', () => {
+    // 3 km a 5:00/km e depois 2 km a 4:00/km (1 amostra por segundo)
+    const amostras: { t: number; dist: number }[] = [];
+    let dist = 0;
+    for (let t = 0; t <= 1380; t++) {
+      amostras.push({ t, dist });
+      dist += t < 900 ? 1000 / 300 : 1000 / 240;
+    }
+    const r = melhorTrecho(amostras, 2000);
+    expect(r?.segundos).toBeGreaterThanOrEqual(479);
+    expect(r?.segundos).toBeLessThanOrEqual(481);
+    expect(melhorTrecho(amostras, 10000)).toBeNull();
+  });
+
+  it('junta diário e Garmin, sem repetir, os mais rápidos primeiro', async () => {
+    const banco = await criarBancoDeTeste();
+    await banco.executar(
+      "INSERT INTO treino_realizado (id, garmin_activity_id, fonte, data, distancia_km, duracao_segundos, criado_em) VALUES ('a', '1', 'garmin', '2026-09-10', 10.05, 2700, 'x'), ('b', '2', 'garmin', '2026-09-12', 5, 1500, 'x')",
+    );
+    const garmin = async () => [
+      { activityId: 1, startTimeLocal: '2026-09-10 07:00:00', distance: 10050, duration: 2700 },
+      { activityId: 3, startTimeLocal: '2026-09-20 07:00:00', distance: 21200, duration: 6300 },
+    ];
+    const { candidatos, erroGarmin } = await buscarCandidatosRecorde('2026-09-01', '2026-09-30', 10, garmin);
+    expect(erroGarmin).toBeNull();
+    expect(candidatos.map((c) => [c.garminActivityId, c.noApp, c.inteira])).toEqual([
+      ['1', true, true],
+      ['3', false, false],
+    ]);
+    const semGarmin = await buscarCandidatosRecorde('2026-09-01', '2026-09-30', 10, async () => {
+      throw new Error('fora do ar');
+    });
+    expect(semGarmin).toMatchObject({ erroGarmin: 'fora do ar', candidatos: [{ garminActivityId: '1' }] });
+    await criarRecorde({ distanciaKm: '10', tempo: '45:00', data: '2026-09-10', garminActivityId: '1' });
+    expect((await gerarBackup()).tabelas.recorde_pessoal).toMatchObject([{ garmin_activity_id: '1' }]);
   });
 });

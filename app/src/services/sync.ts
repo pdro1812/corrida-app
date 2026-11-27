@@ -1,3 +1,4 @@
+import { melhorTrechoDoFit } from '../dominio/melhorTrecho';
 import { Banco, obterBanco } from '../db/banco';
 import {
   AtividadeGarmin,
@@ -92,6 +93,25 @@ async function getGarmin(caminho: string, accept = 'application/json'): Promise<
 async function buscarAtividadesRecentes(limite: number): Promise<AtividadeGarmin[]> {
   const resposta = await getGarmin(`/activitylist-service/activities/search/activities?start=0&limit=${limite}`);
   return (await resposta.json()) as AtividadeGarmin[];
+}
+
+// Corridas do Garmin num período (inclusive as nunca sincronizadas), para
+// importar recordes antigos. Datas AAAA-MM-DD validadas antes de ir na URL.
+export async function buscarCorridasNoPeriodo(inicio: string, fim: string): Promise<AtividadeGarmin[]> {
+  const data = /^\d{4}-\d{2}-\d{2}$/;
+  if (!data.test(inicio) || !data.test(fim)) throw new GarminError('Datas no formato AAAA-MM-DD');
+  const resposta = await getGarmin(
+    `/activitylist-service/activities/search/activities?startDate=${inicio}&endDate=${fim}&start=0&limit=200`,
+  );
+  return ((await resposta.json()) as AtividadeGarmin[]).filter(ehAtividadeDeCorrida);
+}
+
+// Melhor trecho de `metros` dentro de uma atividade (baixa o FIT dela).
+export async function melhorTrechoDaAtividade(garminActivityId: string, metros: number) {
+  if (!/^\d+$/.test(garminActivityId)) throw new GarminError('ID de atividade inválido');
+  const fit = await baixarFit(garminActivityId);
+  if (!fit) throw new GarminError('Não foi possível baixar o arquivo da atividade');
+  return melhorTrechoDoFit(fit, metros);
 }
 
 // Laps e métricas completas vêm do arquivo FIT original (a API não expõe

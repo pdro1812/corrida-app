@@ -207,6 +207,10 @@ const MIGRACOES: string[] = [
   );
   CREATE INDEX bloco_ciclo_ciclo ON bloco_ciclo(ciclo_id);
   `,
+  // Recorde importado de uma atividade do Garmin (inteira ou melhor trecho).
+  `
+  ALTER TABLE recorde_pessoal ADD COLUMN garmin_activity_id TEXT;
+  `,
 ];
 
 export const VERSAO_ESQUEMA = MIGRACOES.length;
@@ -252,7 +256,7 @@ export const TABELAS_BACKUP: Record<string, readonly string[]> = {
   treino_metricas: COLUNAS_TREINO_METRICAS,
   bem_estar_dia: ['data', 'fonte', 'json', 'buscado_em'],
   treino_analise: ['treino_realizado_id', 'versao', 'json', 'gerado_em'],
-  recorde_pessoal: ['id', 'distancia_km', 'tempo_segundos', 'data', 'descricao', 'criado_em'],
+  recorde_pessoal: ['id', 'distancia_km', 'tempo_segundos', 'data', 'descricao', 'criado_em', 'garmin_activity_id'],
   atividade_ignorada: ['garmin_activity_id', 'data', 'ignorada_em'],
 };
 

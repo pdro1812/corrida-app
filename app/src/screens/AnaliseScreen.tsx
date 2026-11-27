@@ -4,6 +4,7 @@ import { Segmentos } from '../components/Segmentos';
 import { Screen } from '../components/Screen';
 import { Banner, TipoBanner } from '../components/Banner';
 import { PerfilAnaliseCard } from '../components/PerfilAnaliseCard';
+import { ImportarRecordeCard } from '../components/ImportarRecordeCard';
 import { LabScreen } from './LabScreen';
 import { cores } from '../theme/theme';
 
@@ -15,6 +16,7 @@ type Aviso = { tipo: TipoBanner; titulo: string; mensagem?: string };
 export function AnaliseScreen() {
   const [secao, setSecao] = useState<Secao>('lab');
   const [aviso, setAviso] = useState<Aviso | null>(null);
+  const [versaoRecordes, setVersaoRecordes] = useState(0);
   return (
     <View style={styles.flex}>
       <Segmentos
@@ -30,7 +32,8 @@ export function AnaliseScreen() {
       ) : (
         <Screen scroll>
           {aviso ? <Banner tipo={aviso.tipo} titulo={aviso.titulo} mensagem={aviso.mensagem} onFechar={() => setAviso(null)} /> : null}
-          <PerfilAnaliseCard onAviso={setAviso} />
+          <PerfilAnaliseCard key={versaoRecordes} onAviso={setAviso} />
+          <ImportarRecordeCard onAviso={setAviso} onImportado={() => setVersaoRecordes((v) => v + 1)} />
         </Screen>
       )}
     </View>
