@@ -15,6 +15,7 @@ export interface AtividadeGarmin {
   elevationGain?: number;
   lapCount?: number;
   activityType?: { typeKey?: string };
+  activityTrainingLoad?: number; // carga de treino (EPOC) calculada pela Garmin
 }
 
 // Lap extraído do arquivo FIT — a Personal API não expõe laps em JSON.

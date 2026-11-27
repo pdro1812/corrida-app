@@ -21,6 +21,14 @@ export const FONTES_BEM_ESTAR: Record<FonteBemEstar, (inicio: string, fim: strin
 
 const CHAVES_DE_DATA = ['calendarDate', 'calendardate', 'date', 'summaryDate', 'startDate', 'day'];
 const RE_DATA = /^\d{4}-\d{2}-\d{2}/;
+const CHAVES_FC_REPOUSO = [
+  'restingHeartRate',
+  'restingHeartRateInBeatsPerMinute',
+  'restingHr',
+  'restingHeartRateValue',
+  'rhr',
+  'currentDayRestingHeartRate',
+];
 
 type Objeto = Record<string, unknown>;
 const ehObjeto = (v: unknown): v is Objeto => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -142,8 +150,9 @@ export function resumirDia(data: string, porFonte: Partial<Record<FonteBemEstar,
     hrvNoite: arred(numero(procurar(hrv, ['lastNightAvg', 'lastNightAverage', 'avgOvernightHrv', 'hrvValue']))),
     hrvStatus: texto(procurar(hrv, ['status', 'hrvStatus'])),
     stressMedio: arred(
-      numero(procurar(stress, ['averageStressLevel', 'avgStressLevel', 'overallStressLevel'])) ??
-        numero(procurar(resumo, ['averageStressLevel'])),
+      [stress, resumo, bb]
+        .map((fonte) => numero(procurar(fonte, ['overallStressLevel', 'averageStressLevel', 'avgStressLevel', 'stressAvg'])))
+        .find((v) => v !== null && v >= 0) ?? null,
     ),
     bodyBatteryMax: arred(
       numero(procurar(bb, ['bodyBatteryHighestValue', 'highestValue', 'maxBodyBattery', 'bodyBatteryHighValue'])) ??
@@ -153,9 +162,12 @@ export function resumirDia(data: string, porFonte: Partial<Record<FonteBemEstar,
       numero(procurar(bb, ['bodyBatteryLowestValue', 'lowestValue', 'minBodyBattery', 'bodyBatteryLowValue'])) ??
         numero(procurar(resumo, ['bodyBatteryLowestValue'])),
     ),
+    // O resumo diário pode não vir na Personal API: procura também no sono
+    // (o relatório da noite traz a FC de repouso), no HRV e no stress.
     fcRepouso: arred(
-      numero(procurar(resumo, ['restingHeartRate', 'restingHeartRateInBeatsPerMinute', 'restingHr'])) ??
-        numero(procurar(hrv, ['restingHeartRate'])),
+      [resumo, sono, hrv, stress, bb]
+        .map((fonte) => numero(procurar(fonte, CHAVES_FC_REPOUSO)))
+        .find((v) => v !== null && v >= 25 && v <= 120) ?? null,
     ),
     vo2max: arred(numero(procurar(vo2max, ['vo2MaxPreciseValue', 'vo2MaxValue', 'vo2Max'])), 1),
     sonoProfundoMin: minutos(numero(procurar(sono, ['deepSleepSeconds']))),

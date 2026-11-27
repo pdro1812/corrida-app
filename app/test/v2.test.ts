@@ -247,12 +247,31 @@ describe('bem-estar (sono, HRV, Body Battery)', () => {
     });
     const resultado = await sincronizarBemEstar(banco, buscarJson, '2026-11-12');
     expect(resultado).toMatchObject({ sono: true, hrv: false });
-    expect(buscarJson.mock.calls[0][0]).toContain('startDate=2026-10-13&endDate=2026-11-12');
+    // 30 dias em pedidos de no máximo 28 (stress e HRV recusam mais).
+    expect(buscarJson.mock.calls[0][0]).toContain('startDate=2026-10-13&endDate=2026-11-09');
+    expect(buscarJson.mock.calls.at(-1)?.[0]).toContain('/2026-11-10/2026-11-12');
     expect(await listarBemEstar('2026-11-01')).toMatchObject([{ data: '2026-11-11', sonoHoras: 7 }]);
 
     // Próximo sync só pede os últimos dias (com sobreposição)
     await sincronizarBemEstar(banco, buscarJson, '2026-11-13');
     expect(buscarJson.mock.calls.at(-1)?.[0]).toContain('/2026-11-10/2026-11-13');
+
+    // Com treinos mais antigos, busca o histórico para trás, 2 pedidos por sync.
+    await banco.executar("INSERT INTO treino_realizado (id, data, criado_em) VALUES ('antigo', '2026-08-20', 'x')");
+    buscarJson.mockClear();
+    await sincronizarBemEstar(banco, buscarJson, '2026-11-13');
+    const sono = buscarJson.mock.calls.map((c) => c[0]).filter((c) => c.startsWith('/sleep-service'));
+    expect(sono).toEqual([
+      expect.stringContaining('startDate=2026-11-11&endDate=2026-11-13'),
+      expect.stringContaining('startDate=2026-10-14&endDate=2026-11-10'),
+      expect.stringContaining('startDate=2026-09-16&endDate=2026-10-13'),
+    ]);
+    buscarJson.mockClear();
+    await sincronizarBemEstar(banco, buscarJson, '2026-11-13');
+    expect(buscarJson.mock.calls.map((c) => c[0]).filter((c) => c.startsWith('/sleep-service'))).toEqual([
+      expect.stringContaining('startDate=2026-11-11&endDate=2026-11-13'),
+      expect.stringContaining('startDate=2026-08-20&endDate=2026-09-15'),
+    ]);
 
     const texto = await gerarExportIa(4, new Date('2026-11-12T12:00:00Z'));
     const json = JSON.parse(texto.slice(texto.indexOf('{'), texto.lastIndexOf('}') + 1));
@@ -347,5 +366,12 @@ describe('bem-estar com o formato real da Personal API (valores sintéticos)', (
       bodyBatteryCarregado: 55,
       bodyBatteryGasto: 60,
     });
+    // Sem o resumo diário: FC de repouso do relatório do sono; stress -1 (sem dados) é ignorado.
+    expect(
+      resumirDia('2026-11-12', {
+        sono: { calendarDate: '2026-11-12', restingHeartRate: 47 },
+        stress: { calendarDate: '2026-11-12', values: { overallStressLevel: -1 } },
+      }),
+    ).toMatchObject({ fcRepouso: 47, stressMedio: null });
   });
 });

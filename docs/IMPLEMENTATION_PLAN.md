@@ -70,6 +70,7 @@ uma base visual mínima (não existia nenhuma até agora — telas eram só
 - [x] Navegação em 4 abas (Hoje, Ciclo, Treinos, Análise) com as telas de detalhe numa pilha raiz
 - [x] Calendário de provas: provas fora do ciclo (objetivo futuro ou avulsa) e ciclo novo usando uma prova já cadastrada como alvo (RF02)
 - [x] Blocos do ciclo (`bloco_ciclo`): linha do tempo, números por bloco, gerar das fases da planilha ou divisão padrão; entram no banco de análise (RF01). Antecipa parte do item "Progresso do Ciclo" da Fase 2, com o aval do dono do projeto (2026-11-27)
+- [x] Dados do banco de análise (2026-11-27): treino sem voltas marcadas é dividido pelo texto do previsto (`dominio/estruturaPrevisto.ts`, `treino.divisao`, `previsto_bloco` lido do texto); sono/HRV/stress em pedidos de 28 dias com histórico até o 1º treino; FC de repouso e stress procurados em mais fontes; carga da Garmin pela lista de atividades e `carga_srpe` (RPE x min); aviso de treinos ainda sem análise no export
 - [x] Importar recorde de uma corrida do Garmin por período, da atividade inteira ou do melhor trecho no FIT
 - [x] Sync automático nos horários configurados (08:00 e 20:00), em segundo plano com `expo-background-task` (RF10)
 - [x] Custo de esforço explicado no Lab: como ler, faixas, conta por treino e tendência de 4 semanas

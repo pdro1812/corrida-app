@@ -1,6 +1,7 @@
 import { AnaliseTreino } from './blocosFit';
 import { ResumoBemEstarDia } from './bemEstar';
 import { descreverTempo } from './clima';
+import { parseEstruturaPrevisto } from './estruturaPrevisto';
 import {
   desviosDoDia,
   EntradaExport,
@@ -20,7 +21,7 @@ import {
 // perfil do atleta, o dicionário e as consultas sugeridas, para uma sessão
 // nova começar sem contexto. Lógica pura: gera DDL e linhas.
 
-export const VERSAO_BANCO_ANALISE = 1;
+export const VERSAO_BANCO_ANALISE = 2;
 
 type Valor = string | number | null;
 
@@ -107,7 +108,8 @@ export const ESQUEMA_ANALISE: string[] = [
      carga REAL, cadencia INTEGER, potencia INTEGER, contato_ms INTEGER, oscilacao_mm REAL, passada_m REAL,
      deriva_sessao_pct REAL, temp_c REAL, sensacao_c REAL, umidade_pct REAL, vento_kmh REAL, chuva_mm REAL,
      condicao TEXT, z1_fc_min INTEGER, z2_fc_min INTEGER, z3_fc_min INTEGER, z4_fc_min INTEGER, z5_fc_min INTEGER,
-     z1_pace_min INTEGER, z2_pace_min INTEGER, z3_pace_min INTEGER, z4_pace_min INTEGER, z5_pace_min INTEGER)`,
+     z1_pace_min INTEGER, z2_pace_min INTEGER, z3_pace_min INTEGER, z4_pace_min INTEGER, z5_pace_min INTEGER,
+     divisao TEXT, carga_srpe INTEGER)`,
   `CREATE TABLE bloco (treino_id TEXT, ordem INTEGER, tipo TEXT, n INTEGER, km REAL, min REAL, pace_p10_s INTEGER,
      pace_med_s INTEGER, pace_p90_s INTEGER, gap_s INTEGER, fc_p10 INTEGER, fc_med INTEGER, fc_p90 INTEGER,
      fc_estavel INTEGER, custo_bat_km INTEGER, deriva_pct REAL, cadencia INTEGER, contato_ms INTEGER, passada_m REAL,
@@ -152,7 +154,7 @@ export const ESQUEMA_ANALISE: string[] = [
        FROM (SELECT date(data, '-' || ((CAST(strftime('%w', data) AS INTEGER) + 6) % 7) || ' days') AS semana,
                     min(data) AS inicio,
                     count(*) AS treinos, round(sum(km), 1) AS km, round(sum(min)) AS min, round(avg(rpe), 1) AS rpe_medio,
-                    round(sum(carga)) AS carga, sum(z1_fc_min) AS z1_min, sum(z2_fc_min) AS z2_min, sum(z3_fc_min) AS z3_min,
+                    round(sum(carga)) AS carga, sum(carga_srpe) AS carga_srpe, sum(z1_fc_min) AS z1_min, sum(z2_fc_min) AS z2_min, sum(z3_fc_min) AS z3_min,
                     sum(z4_fc_min) AS z4_min, sum(z5_fc_min) AS z5_min
                FROM treino GROUP BY semana) s`,
   // Resumo por bloco do ciclo (Base, Desenvolvimento...), para comparar blocos.
@@ -162,6 +164,7 @@ export const ESQUEMA_ANALISE: string[] = [
             count(t.id) AS treinos, round(sum(t.km), 1) AS km,
             round(sum(t.km) / ((julianday(bc.data_fim) - julianday(bc.data_inicio) + 1) / 7.0), 1) AS km_semana,
             round(avg(t.rpe), 1) AS rpe_medio, round(avg(t.fc_media)) AS fc_media, round(sum(t.carga)) AS carga,
+            sum(t.carga_srpe) AS carga_srpe,
             (SELECT round(avg(b.custo_bat_km)) FROM bloco b JOIN treino t2 ON t2.id = b.treino_id
               WHERE b.tipo = 'continuo' AND t2.data BETWEEN bc.data_inicio AND bc.data_fim) AS custo_continuo_bat_km,
             (SELECT max(t3.km) FROM treino t3 WHERE t3.data BETWEEN bc.data_inicio AND bc.data_fim) AS maior_treino_km
@@ -255,7 +258,8 @@ export function montarTabelasAnalise(e: EntradaAnalise): Record<(typeof TABELAS_
       arred(s?.carga), s?.cadencia ?? null, s?.potencia ?? null, s?.contatoMs ?? null, s?.oscilacaoMm ?? null,
       s?.passadaM ?? null, s?.desacoplamentoPct ?? null, arred(s?.temperaturaC, 1), arred(s?.sensacaoTermicaC, 1),
       arred(s?.umidadePct), arred(s?.ventoKmh), arred(s?.precipitacaoMm, 1), s ? descreverTempo(s.codigoTempo) : null,
-      ...zFc, ...zPace,
+      ...zFc, ...zPace, a?.divisao ?? null,
+      r.rpe !== null && r.duracaoSegundos ? Math.round((r.rpe * r.duracaoSegundos) / 60) : null,
     ];
   });
 
@@ -266,6 +270,15 @@ export function montarTabelasAnalise(e: EntradaAnalise): Record<(typeof TABELAS_
         p.id, i.ordem, ID_TIPO_PREVISTO[i.tipo] ?? i.tipo, i.distanciaAlvoKm, i.duracaoAlvoSegundos,
         paceSegundos(i.paceAlvoMin), paceSegundos(i.paceAlvoMax),
       ]);
+    }
+    // Sem intervalos cadastrados: blocos lidos do texto ("3 km aq + 2x12 min...").
+    if (p.intervalos.length === 0) {
+      (parseEstruturaPrevisto(p.descricao) ?? []).forEach((seg, i) => {
+        previstoBlocos.push([
+          p.id, i + 1, seg.tipo, seg.metros !== undefined ? seg.metros / 1000 : null, seg.segundos ?? null,
+          seg.paceAlvoS?.[0] ?? null, seg.paceAlvoS?.[1] ?? null,
+        ]);
+      });
     }
     return [
       p.id, p.data, p.semana?.numero ?? null, p.semana?.fase ?? null, p.tipo, p.descricao, p.distanciaAlvoKm,
@@ -314,7 +327,7 @@ export function montarTabelasAnalise(e: EntradaAnalise): Record<(typeof TABELAS_
       'id,previsto_id,data,km,min,pace_medio_s,fc_media,subida_m,rpe,sensacoes,nota,te_aerobico,te_anaerobico,carga,' +
         'cadencia,potencia,contato_ms,oscilacao_mm,passada_m,deriva_sessao_pct,temp_c,sensacao_c,umidade_pct,vento_kmh,' +
         'chuva_mm,condicao,z1_fc_min,z2_fc_min,z3_fc_min,z4_fc_min,z5_fc_min,z1_pace_min,z2_pace_min,z3_pace_min,' +
-        'z4_pace_min,z5_pace_min',
+        'z4_pace_min,z5_pace_min,divisao,carga_srpe',
       treinos,
     ),
     bloco: tabela(
@@ -406,8 +419,8 @@ export const DICIONARIO = `# Tabelas (pace sempre em segundos por km; datas AAAA
 - prova / recorde / ciclo / semana: objetivos, histórico e estrutura do plano.
 - bloco_ciclo: blocos (mesociclos) de cada ciclo, por data: pre_ciclo, base, desenvolvimento, especifico, polimento, transicao. Não confundir com bloco (trechos dentro de um treino).
 - dia: recuperação diária da Garmin (sono, HRV, FC de repouso, stress, body battery, VO2max). O registro do dia é a noite anterior. dz_* = desvio vs os 28 dias anteriores em desvios-padrão (positivo = acima do normal).
-- previsto + previsto_bloco: treino proposto pela planilha e seus blocos (aq, tiro, trote, des) com alvo de pace.
-- treino: cada atividade. Resumo da sessão (TE, carga, dinâmica de corrida), clima, RPE 0-10, sensações e minutos por zona (z1..z5, só trechos planejados, zonas definidas pelo limiar em atleta).
+- previsto + previsto_bloco: treino proposto pela planilha e seus blocos (aq, continuo, tiro, trote, des) com alvo de pace. Quando a planilha não tem os blocos cadastrados, eles são lidos do texto da descrição.
+- treino: cada atividade. Resumo da sessão (TE, carga, dinâmica de corrida), clima, RPE 0-10, sensações e minutos por zona (z1..z5, só trechos planejados, zonas definidas pelo limiar em atleta). divisao = de onde saíram os blocos: laps (voltas do relógio), previsto (texto do proposto, quando o relógio só tinha auto-lap; fronteiras ajustadas à mudança de ritmo) ou nenhuma (um bloco contínuo). carga = carga de treino da Garmin (EPOC); carga_srpe = RPE x minutos (só com RPE registrado).
 - bloco: cada trecho do treino (aq, tiro, trote, continuo, des; n = número do tiro). pace_p10/med/p90 e fc_p10/med/p90 são percentis dos trechos planejados, sem paradas e sem o início de FC de cada bloco; pace_p10 = mais rápido. fc_estavel = mediana da FC na 2ª metade. custo_bat_km = FC x pace. gap_s = pace ajustado à inclinação. deriva_pct só em contínuos >= 20 min. queda_fc_60s = FC no fim do tiro menos 60 s depois.
 - km: cada km completo dos blocos contínuos (pace, FC mediana, inclinação, cadência). Base da curva pace -> FC.
 - extra: trechos não planejados (sprint no fim, voltas depois do desaquecimento). Já estão fora de todas as outras tabelas.
