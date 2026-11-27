@@ -64,8 +64,19 @@ export interface SemanaEntrada {
   rotinaExtra: string | null;
 }
 
+export interface BlocoCicloEntrada {
+  ciclo: string;
+  ordem: number;
+  nome: string;
+  tipo: string; // pre_ciclo | base | desenvolvimento | especifico | polimento | transicao
+  dataInicio: string;
+  dataFim: string;
+  objetivo: string | null;
+}
+
 export interface EntradaAnalise extends EntradaExport {
   provas: ProvaEntrada[];
+  blocosCiclo?: BlocoCicloEntrada[];
   recordes: RecordeEntrada[];
   ciclos: CicloEntrada[];
   semanas: SemanaEntrada[];
@@ -82,6 +93,7 @@ export const ESQUEMA_ANALISE: string[] = [
   `CREATE TABLE recorde (distancia_km REAL, tempo_s INTEGER, pace_s INTEGER, data TEXT, origem TEXT)`,
   `CREATE TABLE ciclo (id TEXT PRIMARY KEY, nome TEXT, data_inicio TEXT, data_fim TEXT, status TEXT)`,
   `CREATE TABLE semana (ciclo TEXT, numero INTEGER, data_inicio TEXT, data_fim TEXT, fase TEXT, rotina_extra TEXT)`,
+  `CREATE TABLE bloco_ciclo (ciclo TEXT, ordem INTEGER, nome TEXT, tipo TEXT, data_inicio TEXT, data_fim TEXT, objetivo TEXT)`,
   `CREATE TABLE dia (data TEXT PRIMARY KEY, sono_h REAL, sono_nota INTEGER, sono_profundo_min INTEGER,
      sono_rem_min INTEGER, despertares INTEGER, hrv INTEGER, hrv_semana INTEGER, hrv_status TEXT, fc_repouso INTEGER,
      stress INTEGER, stress_sono INTEGER, resp_sono REAL, bb_max INTEGER, bb_min INTEGER, bb_carga INTEGER,
@@ -110,7 +122,9 @@ export const ESQUEMA_ANALISE: string[] = [
   // Treino com o proposto, o contexto do dia e a semana do ciclo.
   `CREATE VIEW v_treino AS
      SELECT t.*, p.tipo AS tipo_previsto, p.descricao AS descricao_prevista, p.pace_alvo_min_s, p.pace_alvo_max_s,
-            p.semana, p.fase, d.sono_h, d.sono_nota, d.hrv, d.hrv_status, d.fc_repouso, d.stress, d.bb_max,
+            p.semana, p.fase,
+            (SELECT bc.nome FROM bloco_ciclo bc WHERE t.data BETWEEN bc.data_inicio AND bc.data_fim LIMIT 1) AS bloco_ciclo,
+            d.sono_h, d.sono_nota, d.hrv, d.hrv_status, d.fc_repouso, d.stress, d.bb_max,
             d.dz_sono, d.dz_hrv, d.dz_fc_repouso, d.dz_stress, d.dz_bb
        FROM treino t LEFT JOIN previsto p ON p.id = t.previsto_id LEFT JOIN dia d ON d.data = t.data`,
   // Pontos da curva pace -> FC: cada km dos trechos contínuos, com clima e tipo.
@@ -134,15 +148,29 @@ export const ESQUEMA_ANALISE: string[] = [
       WHERE b.tipo = 'tiro'`,
   // Resumo por semana ISO (segunda-feira).
   `CREATE VIEW v_semana AS
-     SELECT date(data, '-' || ((CAST(strftime('%w', data) AS INTEGER) + 6) % 7) || ' days') AS semana,
-            count(*) AS treinos, round(sum(km), 1) AS km, round(sum(min)) AS min, round(avg(rpe), 1) AS rpe_medio,
-            round(sum(carga)) AS carga, sum(z1_fc_min) AS z1_min, sum(z2_fc_min) AS z2_min, sum(z3_fc_min) AS z3_min,
-            sum(z4_fc_min) AS z4_min, sum(z5_fc_min) AS z5_min
-       FROM treino GROUP BY semana`,
+     SELECT s.*, (SELECT bc.nome FROM bloco_ciclo bc WHERE s.inicio BETWEEN bc.data_inicio AND bc.data_fim LIMIT 1) AS bloco_ciclo
+       FROM (SELECT date(data, '-' || ((CAST(strftime('%w', data) AS INTEGER) + 6) % 7) || ' days') AS semana,
+                    min(data) AS inicio,
+                    count(*) AS treinos, round(sum(km), 1) AS km, round(sum(min)) AS min, round(avg(rpe), 1) AS rpe_medio,
+                    round(sum(carga)) AS carga, sum(z1_fc_min) AS z1_min, sum(z2_fc_min) AS z2_min, sum(z3_fc_min) AS z3_min,
+                    sum(z4_fc_min) AS z4_min, sum(z5_fc_min) AS z5_min
+               FROM treino GROUP BY semana) s`,
+  // Resumo por bloco do ciclo (Base, Desenvolvimento...), para comparar blocos.
+  `CREATE VIEW v_bloco_ciclo AS
+     SELECT bc.ciclo, bc.ordem, bc.nome, bc.tipo, bc.data_inicio, bc.data_fim, bc.objetivo,
+            round((julianday(bc.data_fim) - julianday(bc.data_inicio) + 1) / 7.0, 1) AS semanas,
+            count(t.id) AS treinos, round(sum(t.km), 1) AS km,
+            round(sum(t.km) / ((julianday(bc.data_fim) - julianday(bc.data_inicio) + 1) / 7.0), 1) AS km_semana,
+            round(avg(t.rpe), 1) AS rpe_medio, round(avg(t.fc_media)) AS fc_media, round(sum(t.carga)) AS carga,
+            (SELECT round(avg(b.custo_bat_km)) FROM bloco b JOIN treino t2 ON t2.id = b.treino_id
+              WHERE b.tipo = 'continuo' AND t2.data BETWEEN bc.data_inicio AND bc.data_fim) AS custo_continuo_bat_km,
+            (SELECT max(t3.km) FROM treino t3 WHERE t3.data BETWEEN bc.data_inicio AND bc.data_fim) AS maior_treino_km
+       FROM bloco_ciclo bc LEFT JOIN treino t ON t.data BETWEEN bc.data_inicio AND bc.data_fim
+      GROUP BY bc.ciclo, bc.ordem, bc.nome, bc.tipo, bc.data_inicio, bc.data_fim, bc.objetivo`,
 ];
 
 export const TABELAS_ANALISE = [
-  'leia_me', 'atleta', 'prova', 'recorde', 'ciclo', 'semana', 'dia', 'previsto', 'previsto_bloco', 'treino', 'bloco',
+  'leia_me', 'atleta', 'prova', 'recorde', 'ciclo', 'semana', 'bloco_ciclo', 'dia', 'previsto', 'previsto_bloco', 'treino', 'bloco',
   'km', 'extra', 'hist_fc', 'hist_pace',
 ] as const;
 
@@ -268,6 +296,10 @@ export function montarTabelasAnalise(e: EntradaAnalise): Record<(typeof TABELAS_
       'ciclo,numero,data_inicio,data_fim,fase,rotina_extra',
       e.semanas.map((s) => [s.ciclo, s.numero, s.dataInicio, s.dataFim, s.fase, s.rotinaExtra]),
     ),
+    bloco_ciclo: tabela(
+      'ciclo,ordem,nome,tipo,data_inicio,data_fim,objetivo',
+      (e.blocosCiclo ?? []).map((b) => [b.ciclo, b.ordem, b.nome, b.tipo, b.dataInicio, b.dataFim, b.objetivo]),
+    ),
     dia: tabela(
       'data,sono_h,sono_nota,sono_profundo_min,sono_rem_min,despertares,hrv,hrv_semana,hrv_status,fc_repouso,' +
         'stress,stress_sono,resp_sono,bb_max,bb_min,bb_carga,bb_gasto,vo2max,dz_sono,dz_hrv,dz_fc_repouso,dz_stress,dz_bb',
@@ -340,6 +372,16 @@ export function montarPerfil(e: EntradaAnalise): string {
       `**Ciclo atual:** ${cicloAtivo.nome} (${cicloAtivo.dataInicio} a ${cicloAtivo.dataFim})` +
         (semanaAtual ? `, semana ${semanaAtual.numero}${semanaAtual.fase ? `, fase ${semanaAtual.fase}` : ''}` : ''),
     );
+    const blocos = (e.blocosCiclo ?? []).filter((b) => b.ciclo === cicloAtivo.nome);
+    if (blocos.length) {
+      linhas.push(
+        `**Blocos do ciclo:** ` +
+          blocos
+            .map((b) => `${b.nome} (${b.tipo}, ${b.dataInicio} a ${b.dataFim}${b.dataInicio <= e.fim && e.fim <= b.dataFim ? ', ATUAL' : ''})`)
+            .join('; '),
+      );
+      for (const b of blocos.filter((x) => x.objetivo)) linhas.push(`- Objetivo de ${b.nome}: ${b.objetivo}`);
+    }
   }
   linhas.push(
     `**Limiar:** ${fcLimiar ? `FC ${fcLimiar} bpm` : 'FC não configurada'} · ${paceLimiarS ? `pace ${paceTexto(paceLimiarS)}/km` : 'pace não configurado'}`,
@@ -362,6 +404,7 @@ export function montarPerfil(e: EntradaAnalise): string {
 export const DICIONARIO = `# Tabelas (pace sempre em segundos por km; datas AAAA-MM-DD)
 - atleta(chave, valor): limiares, zonas, período, observações.
 - prova / recorde / ciclo / semana: objetivos, histórico e estrutura do plano.
+- bloco_ciclo: blocos (mesociclos) de cada ciclo, por data: pre_ciclo, base, desenvolvimento, especifico, polimento, transicao. Não confundir com bloco (trechos dentro de um treino).
 - dia: recuperação diária da Garmin (sono, HRV, FC de repouso, stress, body battery, VO2max). O registro do dia é a noite anterior. dz_* = desvio vs os 28 dias anteriores em desvios-padrão (positivo = acima do normal).
 - previsto + previsto_bloco: treino proposto pela planilha e seus blocos (aq, tiro, trote, des) com alvo de pace.
 - treino: cada atividade. Resumo da sessão (TE, carga, dinâmica de corrida), clima, RPE 0-10, sensações e minutos por zona (z1..z5, só trechos planejados, zonas definidas pelo limiar em atleta).
@@ -369,7 +412,7 @@ export const DICIONARIO = `# Tabelas (pace sempre em segundos por km; datas AAAA
 - km: cada km completo dos blocos contínuos (pace, FC mediana, inclinação, cadência). Base da curva pace -> FC.
 - extra: trechos não planejados (sprint no fim, voltas depois do desaquecimento). Já estão fora de todas as outras tabelas.
 - hist_fc / hist_pace: segundos por bpm e por faixa de 5 s/km, para recalcular zonas com outro limiar.
-- Views: v_treino (treino + proposto + contexto do dia), v_km, v_curva_pace_fc (por mês e faixa de 10 s/km), v_tiro (tiros com alvo e % do limiar), v_semana.`;
+- Views: v_treino (treino + proposto + contexto do dia), v_km, v_curva_pace_fc (por mês e faixa de 10 s/km), v_tiro (tiros com alvo e % do limiar), v_semana (com o bloco do ciclo), v_bloco_ciclo (volume, RPE, carga e custo por bloco do ciclo).`;
 
 export const CONSULTAS = `# Como começar uma análise
 1. Leia a seção perfil desta tabela e a tabela atleta.
@@ -378,6 +421,8 @@ export const CONSULTAS = `# Como começar uma análise
 # Consultas úteis
 -- Panorama das últimas 8 semanas
 SELECT * FROM v_semana ORDER BY semana DESC LIMIT 8;
+-- Comparar blocos do ciclo (volume, carga, custo nos contínuos)
+SELECT * FROM v_bloco_ciclo ORDER BY ciclo, ordem;
 -- Curva pace -> FC (compare meses; filtre temperatura parecida com v_km se precisar)
 SELECT * FROM v_curva_pace_fc WHERE n_km >= 3 ORDER BY mes, faixa_pace_s;
 -- Tiros: alvo, execução, FC em % do limiar e fadiga na série

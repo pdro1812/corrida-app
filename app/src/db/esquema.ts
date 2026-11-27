@@ -191,6 +191,22 @@ const MIGRACOES: string[] = [
     ignorada_em TEXT NOT NULL
   );
   `,
+  // Blocos (mesociclos) do ciclo: Base, Desenvolvimento, Específico...
+  // As semanas entram no bloco pela data (dominio/blocosCiclo.ts).
+  `
+  CREATE TABLE bloco_ciclo (
+    id TEXT PRIMARY KEY,
+    ciclo_id TEXT NOT NULL REFERENCES ciclo(id) ON DELETE CASCADE,
+    ordem INTEGER NOT NULL,
+    nome TEXT NOT NULL,
+    tipo TEXT NOT NULL,
+    data_inicio TEXT NOT NULL,
+    data_fim TEXT NOT NULL,
+    objetivo TEXT,
+    criado_em TEXT NOT NULL
+  );
+  CREATE INDEX bloco_ciclo_ciclo ON bloco_ciclo(ciclo_id);
+  `,
 ];
 
 export const VERSAO_ESQUEMA = MIGRACOES.length;
@@ -211,6 +227,7 @@ export const TABELAS_BACKUP: Record<string, readonly string[]> = {
   ciclo: ['id', 'nome', 'data_inicio', 'data_fim', 'status', 'criado_em'],
   importacao: ['id', 'ciclo_id', 'nome_arquivo', 'semanas_criadas', 'treinos_criados', 'linhas_com_erro', 'criado_em'],
   semana: ['id', 'ciclo_id', 'numero_semana', 'data_inicio', 'data_fim', 'fase', 'rotina_extra'],
+  bloco_ciclo: ['id', 'ciclo_id', 'ordem', 'nome', 'tipo', 'data_inicio', 'data_fim', 'objetivo', 'criado_em'],
   prova: [
     'id', 'ciclo_id', 'tipo', 'nome', 'data', 'distancia_km', 'meta_tempo_segundos',
     'resultado_tempo_segundos', 'resultado_pace', 'concluida',

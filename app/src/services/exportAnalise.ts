@@ -49,8 +49,27 @@ export async function montarEntradaAnalise(agora = new Date()): Promise<EntradaA
     rotina_extra: string | null;
   }>('SELECT ciclo_id, numero_semana, data_inicio, data_fim, fase, rotina_extra FROM semana ORDER BY data_inicio');
 
+  const blocosCiclo = await banco.todos<{
+    ciclo_id: string;
+    ordem: number;
+    nome: string;
+    tipo: string;
+    data_inicio: string;
+    data_fim: string;
+    objetivo: string | null;
+  }>('SELECT ciclo_id, ordem, nome, tipo, data_inicio, data_fim, objetivo FROM bloco_ciclo ORDER BY data_inicio, ordem');
+
   return {
     ...base,
+    blocosCiclo: blocosCiclo.map((b) => ({
+      ciclo: nomeCiclo.get(b.ciclo_id) ?? b.ciclo_id,
+      ordem: b.ordem,
+      nome: b.nome,
+      tipo: b.tipo,
+      dataInicio: b.data_inicio,
+      dataFim: b.data_fim,
+      objetivo: b.objetivo,
+    })),
     provas: provas.map((p) => ({
       nome: p.nome,
       tipo: p.tipo,

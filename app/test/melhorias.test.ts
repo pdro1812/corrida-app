@@ -6,6 +6,8 @@ import { gerarBackup } from '../src/services/backup';
 import { criarProva, excluirProva, listarCalendarioProvas, listarProvasSemCiclo } from '../src/services/provas';
 import { criarCiclo } from '../src/services/ciclos';
 import { montarPerfil } from '../src/dominio/bancoAnalise';
+import { blocoDaData, blocosDasFases, gerarBlocosPadrao, posicaoNoBloco } from '../src/dominio/blocosCiclo';
+import { criarBloco, gerarBlocosDoCiclo, listarBlocos } from '../src/services/blocosCiclo';
 import { criarBancoDeTeste } from './bancoDeTeste';
 
 describe('copiar previsto', () => {
@@ -91,5 +93,42 @@ describe('calendário de provas', () => {
     });
     expect(texto).toContain('**Prova alvo:** Maratona POA');
     expect(texto).toContain('NK42k POA · 42.2 km (alvo de outro ciclo, 11 semana(s) depois da prova alvo)');
+  });
+});
+
+describe('blocos do ciclo', () => {
+  it('divisão padrão cobre o ciclo inteiro com o polimento no fim', () => {
+    const blocos = gerarBlocosPadrao('2026-11-30', '2027-06-06');
+    expect(blocos.map((b) => b.tipo)).toEqual(['base', 'desenvolvimento', 'especifico', 'polimento']);
+    expect(blocos[0].dataInicio).toBe('2026-11-30');
+    expect(blocos[3].dataFim).toBe('2027-06-06');
+    for (let i = 1; i < blocos.length; i++) expect(blocos[i].dataInicio > blocos[i - 1].dataFim).toBe(true);
+    expect(posicaoNoBloco(blocos[3], blocos[3].dataFim).total).toBe(3);
+  });
+
+  it('agrupa semanas seguidas com a mesma fase da planilha', () => {
+    const s = (inicio: string, fim: string, fase: string | null) => ({ dataInicio: inicio, dataFim: fim, fase });
+    expect(
+      blocosDasFases([
+        s('2026-12-07', '2026-12-13', 'Base'),
+        s('2026-12-14', '2026-12-20', 'base'),
+        s('2026-12-21', '2026-12-27', 'Específico'),
+        s('2026-12-28', '2027-01-03', 'Taper'),
+      ]),
+    ).toEqual([
+      { nome: 'Base', tipo: 'base', dataInicio: '2026-12-07', dataFim: '2026-12-20' },
+      { nome: 'Específico', tipo: 'especifico', dataInicio: '2026-12-21', dataFim: '2026-12-27' },
+      { nome: 'Taper', tipo: 'polimento', dataInicio: '2026-12-28', dataFim: '2027-01-03' },
+    ]);
+    expect(blocoDaData([{ dataInicio: '2026-12-07', dataFim: '2026-12-20' }], '2026-12-21')).toBeNull();
+  });
+
+  it('cria, valida e entra no backup', async () => {
+    await criarBancoDeTeste();
+    const ciclo = await criarCiclo({ nome: 'C', dataInicio: '2026-11-30', dataFim: '2027-06-06', provaNome: 'M', provaData: '2027-06-06' });
+    expect(await gerarBlocosDoCiclo(ciclo.id, 'padrao')).toBe(4);
+    await expect(criarBloco(ciclo.id, { nome: 'X', tipo: 'base', dataInicio: '2027-02-01', dataFim: '2027-01-01' })).rejects.toThrow('antes do início');
+    expect((await listarBlocos(ciclo.id)).map((b) => b.ordem)).toEqual([1, 2, 3, 4]);
+    expect((await gerarBackup()).tabelas.bloco_ciclo).toHaveLength(4);
   });
 });

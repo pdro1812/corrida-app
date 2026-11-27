@@ -47,6 +47,9 @@ async function popular() {
     "INSERT INTO semana (id, ciclo_id, numero_semana, data_inicio, data_fim, fase) VALUES ('s', 'c', 7, '2026-11-16', '2026-11-22', 'específico')",
   );
   await banco.executar(
+    "INSERT INTO bloco_ciclo (id, ciclo_id, ordem, nome, tipo, data_inicio, data_fim, objetivo, criado_em) VALUES ('b1', 'c', 1, 'Bloco 1 - Base', 'base', '2026-10-01', '2026-11-30', 'Volume até 60 km', 'x')",
+  );
+  await banco.executar(
     "INSERT INTO prova (id, ciclo_id, tipo, nome, data, distancia_km, meta_tempo_segundos, concluida) VALUES ('pa', 'c', 'alvo', 'Meia SM', '2027-01-24', 21.1, 6240, 0)",
   );
   await banco.executar(
@@ -94,7 +97,7 @@ describe('banco de análise', () => {
 
     const tabelas = db.prepare("SELECT name FROM sqlite_master WHERE type IN ('table', 'view') ORDER BY name").all();
     expect(tabelas.map((t) => t.name)).toEqual(
-      expect.arrayContaining([...TABELAS_ANALISE, 'v_treino', 'v_km', 'v_curva_pace_fc', 'v_tiro', 'v_semana']),
+      expect.arrayContaining([...TABELAS_ANALISE, 'v_treino', 'v_km', 'v_curva_pace_fc', 'v_tiro', 'v_semana', 'v_bloco_ciclo']),
     );
     expect(ESQUEMA_ANALISE.join(' ')).not.toMatch(/latitude|longitude|garmin/i);
 
@@ -113,7 +116,20 @@ describe('banco de análise', () => {
     expect(treino).toMatchObject({ tipo_previsto: 'qualidade', rpe: 7, sono_h: 7, fase: 'específico' });
     expect(db.prepare('SELECT count(*) AS n FROM extra').get()).toEqual({ n: 1 });
     expect(db.prepare('SELECT count(*) AS n FROM km').get()).toEqual({ n: 1 });
-    expect(db.prepare('SELECT semana, treinos FROM v_semana').get()).toEqual({ semana: '2026-11-16', treinos: 1 });
+    expect(db.prepare('SELECT semana, treinos, bloco_ciclo FROM v_semana').get()).toEqual({
+      semana: '2026-11-16',
+      treinos: 1,
+      bloco_ciclo: 'Bloco 1 - Base',
+    });
+    expect(db.prepare('SELECT bloco_ciclo FROM v_treino').get()).toEqual({ bloco_ciclo: 'Bloco 1 - Base' });
+    expect(db.prepare('SELECT nome, treinos, km, rpe_medio FROM v_bloco_ciclo').get()).toEqual({
+      nome: 'Bloco 1 - Base',
+      treinos: 1,
+      km: 4,
+      rpe_medio: 7,
+    });
+    expect(perfil.texto).toContain('**Blocos do ciclo:** Bloco 1 - Base (base, 2026-10-01 a 2026-11-30, ATUAL)');
+    expect(perfil.texto).toContain('- Objetivo de Bloco 1 - Base: Volume até 60 km');
     expect(db.prepare("SELECT valor FROM atleta WHERE chave = 'pace_limiar_s'").get()).toEqual({ valor: '290' });
     expect(db.prepare('SELECT count(*) AS n FROM prova').get()).toEqual({ n: 2 });
   });

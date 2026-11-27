@@ -15,10 +15,11 @@ import { LoadingState } from '../components/LoadingState';
 import { ListaSemanas } from '../components/ListaSemanas';
 import { Segmentos } from '../components/Segmentos';
 import { ProvasScreen } from './ProvasScreen';
+import { BlocosDoCiclo } from '../components/BlocosDoCiclo';
 import { cores, espacamento, tipografia } from '../theme/theme';
 
 type Props = CompositeScreenProps<BottomTabScreenProps<AbasParamList, 'Ciclo'>, NativeStackScreenProps<RootStackParamList>>;
-type Secao = 'semanas' | 'provas';
+type Secao = 'semanas' | 'blocos' | 'provas';
 
 // Aba Ciclo: tudo do planejamento. Semanas do ciclo ativo e calendário de
 // provas, com atalhos para editar o ciclo, importar planilha e histórico.
@@ -29,17 +30,18 @@ export function CicloScreen({ navigation }: Props) {
       <Segmentos
         opcoes={[
           { valor: 'semanas', rotulo: 'Semanas' },
+          { valor: 'blocos', rotulo: 'Blocos' },
           { valor: 'provas', rotulo: 'Provas' },
         ]}
         valor={secao}
         onChange={setSecao}
       />
-      {secao === 'semanas' ? <SemanasDoCiclo navigation={navigation} /> : <ProvasScreen />}
+      {secao === 'provas' ? <ProvasScreen /> : <SemanasDoCiclo navigation={navigation} secao={secao} />}
     </View>
   );
 }
 
-function SemanasDoCiclo({ navigation }: { navigation: Props['navigation'] }) {
+function SemanasDoCiclo({ navigation, secao }: { navigation: Props['navigation']; secao: 'semanas' | 'blocos' }) {
   const [carregando, setCarregando] = useState(true);
   const [ciclo, setCiclo] = useState<Ciclo | null>(null);
   const [semanas, setSemanas] = useState<Semana[]>([]);
@@ -93,8 +95,14 @@ function SemanasDoCiclo({ navigation }: { navigation: Props['navigation'] }) {
           <Text style={tipografia.legenda}>Toque para editar o ciclo</Text>
         </Pressable>
       </Card>
-      {atalhos}
-      <ListaSemanas semanas={semanas} />
+      {secao === 'blocos' ? (
+        <BlocosDoCiclo ciclo={ciclo} semanas={semanas} />
+      ) : (
+        <>
+          {atalhos}
+          <ListaSemanas semanas={semanas} />
+        </>
+      )}
     </Screen>
   );
 }

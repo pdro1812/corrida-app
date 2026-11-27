@@ -8,6 +8,8 @@ import { Ciclo, Prova, Semana, TreinoPrevisto, provaAlvoDoCiclo } from '../types
 import { buscarCicloAtivo } from '../services/ciclos';
 import { listarSemanasDoCiclo } from '../services/semanas';
 import { listarProvasSemCiclo } from '../services/provas';
+import { BlocoCiclo, listarBlocos } from '../services/blocosCiclo';
+import { blocoDaData, posicaoNoBloco, ROTULO_TIPO_BLOCO } from '../dominio/blocosCiclo';
 import { sincronizarGarmin } from '../services/sync';
 import { listarTreinosSemRpe, TreinoSemRpe } from '../services/rpe';
 import { formatarKm } from '../utils/formato';
@@ -50,6 +52,7 @@ export function HomeScreen({ navigation }: Props) {
   const [semanas, setSemanas] = useState<Semana[]>([]);
   const [semRpe, setSemRpe] = useState<TreinoSemRpe[]>([]);
   const [provasForaDoCiclo, setProvasForaDoCiclo] = useState<Prova[]>([]);
+  const [blocos, setBlocos] = useState<BlocoCiclo[]>([]);
 
   const carregarDados = useCallback(async () => {
     setCarregando(true);
@@ -63,6 +66,7 @@ export function HomeScreen({ navigation }: Props) {
         return;
       }
       const listaSemanas = await listarSemanasDoCiclo(cicloAtivo.id);
+      setBlocos(await listarBlocos(cicloAtivo.id));
       setCiclo(cicloAtivo);
       setSemanas(listaSemanas);
     } catch (erroCapturado) {
@@ -161,7 +165,7 @@ export function HomeScreen({ navigation }: Props) {
       ) : (
         <>
           <TreinoDeHoje treinos={treinosDoDia(semanas, hojeLocal())} navigation={navigation} />
-          <PainelCicloAtivo ciclo={ciclo} semanas={semanas} provasDepois={provasForaDoCiclo} navigation={navigation} />
+          <PainelCicloAtivo ciclo={ciclo} semanas={semanas} blocos={blocos} provasDepois={provasForaDoCiclo} navigation={navigation} />
           <SemanaAtual semanas={semanas} navigation={navigation} />
         </>
       )}
@@ -205,14 +209,29 @@ function SemanaAtual({ semanas, navigation }: { semanas: Semana[]; navigation: P
   );
 }
 
+function BlocoAtual({ blocos }: { blocos: BlocoCiclo[] }) {
+  const hoje = hojeLocal();
+  const bloco = blocoDaData(blocos, hoje);
+  if (!bloco) return null;
+  const { atual, total } = posicaoNoBloco(bloco, hoje);
+  return (
+    <Text style={styles.blocoAtual}>
+      {bloco.nome}
+      {bloco.nome.includes(ROTULO_TIPO_BLOCO[bloco.tipo]) ? '' : ` · ${ROTULO_TIPO_BLOCO[bloco.tipo]}`} · semana {atual} de {total}
+    </Text>
+  );
+}
+
 function PainelCicloAtivo({
   ciclo,
   semanas,
+  blocos,
   provasDepois,
   navigation,
 }: {
   ciclo: Ciclo;
   semanas: Semana[];
+  blocos: BlocoCiclo[];
   provasDepois: Prova[];
   navigation: Props['navigation'];
 }) {
@@ -236,6 +255,7 @@ function PainelCicloAtivo({
         <Text style={tipografia.titulo}>{ciclo.nome}</Text>
         {provaAlvo ? <Text style={tipografia.legenda}>{provaAlvo.nome}</Text> : null}
       </Pressable>
+      <BlocoAtual blocos={blocos} />
 
       {dias !== null ? (
         <View style={styles.contagemBloco}>
@@ -335,6 +355,7 @@ const styles = StyleSheet.create({
     borderTopColor: cores.borda,
   },
   hoje: { marginTop: espacamento.md },
+  blocoAtual: { ...tipografia.legendaForte, color: cores.primaria, marginTop: espacamento.xs },
   hojeVazio: { marginTop: espacamento.xs, color: cores.textoSecundario },
   hojeItem: { marginTop: espacamento.sm, gap: espacamento.xs },
   hojeAcoes: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
