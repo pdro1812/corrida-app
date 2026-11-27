@@ -15,33 +15,79 @@ import { agoraIso, somarDias } from './linhas';
 // chega por parâmetro (o sync passa a dele, com token e timeout).
 
 const CONFIG_ULTIMO_DIA = 'bem_estar_ultimo_dia';
+const CONFIG_HISTORICO = 'bem_estar_historico_desde'; // primeiro dia já buscado
 const DIAS_INICIAIS = 30; // primeira vez: último mês
 const SOBREPOSICAO_DIAS = 2; // o sono da noite e o HRV chegam atrasados
+// Os endpoints de estatística da Garmin (stress, HRV) recusam intervalos
+// longos: cada pedido cobre no máximo 28 dias.
+export const DIAS_POR_PEDIDO = 28;
+const PEDIDOS_HISTORICO_POR_SYNC = 2; // histórico vem aos poucos, ~2 meses por sync
+const HISTORICO_MAX_DIAS = 365;
+
+// [inicio, fim] dividido em pedidos de no máximo `dias` dias, em ordem.
+export function dividirPeriodo(inicio: string, fim: string, dias = DIAS_POR_PEDIDO): [string, string][] {
+  const periodos: [string, string][] = [];
+  for (let i = inicio; i <= fim; i = somarDias(i, dias)) {
+    const f = somarDias(i, dias - 1);
+    periodos.push([i, f < fim ? f : fim]);
+  }
+  return periodos;
+}
 
 export async function sincronizarBemEstar(
   banco: Banco,
   buscarJson: (caminho: string) => Promise<unknown>,
   hoje = new Date().toISOString().slice(0, 10),
 ): Promise<Partial<Record<FonteBemEstar, boolean>>> {
-  const ultimo = await lerConfiguracao(CONFIG_ULTIMO_DIA);
-  const inicio = ultimo ? somarDias(ultimo, -SOBREPOSICAO_DIAS) : somarDias(hoje, -DIAS_INICIAIS);
   const resultado: Partial<Record<FonteBemEstar, boolean>> = {};
-  for (const [fonte, caminho] of Object.entries(FONTES_BEM_ESTAR) as [FonteBemEstar, (i: string, f: string) => string][]) {
-    try {
-      const dias = separarPorDia(await buscarJson(caminho(inicio, hoje)));
-      for (const [data, registro] of dias) {
-        await banco.executar(
-          `INSERT INTO bem_estar_dia (data, fonte, json, buscado_em) VALUES (?, ?, ?, ?)
-           ON CONFLICT(data, fonte) DO UPDATE SET json = excluded.json, buscado_em = excluded.buscado_em`,
-          [data, fonte, JSON.stringify(podarJson(enriquecerRegistro(fonte, registro))), agoraIso()],
-        );
+  // Um período, todas as fontes. true se ao menos uma respondeu.
+  const buscarPeriodo = async (inicio: string, fim: string): Promise<boolean> => {
+    let algumaRespondeu = false;
+    for (const [fonte, caminho] of Object.entries(FONTES_BEM_ESTAR) as [FonteBemEstar, (i: string, f: string) => string][]) {
+      try {
+        const dias = separarPorDia(await buscarJson(caminho(inicio, fim)));
+        for (const [data, registro] of dias) {
+          await banco.executar(
+            `INSERT INTO bem_estar_dia (data, fonte, json, buscado_em) VALUES (?, ?, ?, ?)
+             ON CONFLICT(data, fonte) DO UPDATE SET json = excluded.json, buscado_em = excluded.buscado_em`,
+            [data, fonte, JSON.stringify(podarJson(enriquecerRegistro(fonte, registro))), agoraIso()],
+          );
+        }
+        resultado[fonte] = true;
+        algumaRespondeu = true;
+      } catch {
+        resultado[fonte] ??= false; // fonte indisponível não impede as outras
       }
-      resultado[fonte] = true;
-    } catch {
-      resultado[fonte] = false; // fonte indisponível não impede as outras
     }
+    return algumaRespondeu;
+  };
+
+  // Dias recentes (desde o último sync, com sobreposição).
+  const ultimo = await lerConfiguracao(CONFIG_ULTIMO_DIA);
+  const inicioRecente = ultimo ? somarDias(ultimo, -SOBREPOSICAO_DIAS) : somarDias(hoje, -DIAS_INICIAIS);
+  let recenteOk = false;
+  for (const [inicio, fim] of dividirPeriodo(inicioRecente, hoje)) {
+    if (await buscarPeriodo(inicio, fim)) recenteOk = true;
   }
-  if (Object.values(resultado).some(Boolean)) await gravarConfiguracao(CONFIG_ULTIMO_DIA, hoje);
+  if (!recenteOk) return resultado;
+  await gravarConfiguracao(CONFIG_ULTIMO_DIA, hoje);
+
+  // Histórico: volta até o primeiro treino, alguns pedidos por sync. Sem
+  // marca (instalações antigas), começa antes dos dias recentes e refaz o
+  // primeiro mês, que foi buscado num pedido só e pode ter ficado sem stress.
+  const primeiroTreino = (await banco.primeiro<{ data: string | null }>('SELECT min(data) AS data FROM treino_realizado'))
+    ?.data;
+  if (!primeiroTreino) return resultado;
+  const limite = somarDias(hoje, -HISTORICO_MAX_DIAS);
+  const alvo = primeiroTreino > limite ? primeiroTreino : limite;
+  let desde = (await lerConfiguracao(CONFIG_HISTORICO)) ?? inicioRecente;
+  for (let n = 0; n < PEDIDOS_HISTORICO_POR_SYNC && desde > alvo; n++) {
+    const fim = somarDias(desde, -1);
+    const inicio = somarDias(desde, -DIAS_POR_PEDIDO) > alvo ? somarDias(desde, -DIAS_POR_PEDIDO) : alvo;
+    if (!(await buscarPeriodo(inicio, fim))) break;
+    desde = inicio;
+  }
+  await gravarConfiguracao(CONFIG_HISTORICO, desde);
   return resultado;
 }
 
