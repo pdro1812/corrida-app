@@ -13,6 +13,9 @@ import { buscarCandidatosRecorde, criarRecorde } from '../src/services/recordes'
 import { lerHorarios, precisaSincronizar, ultimoHorarioAgendado } from '../src/dominio/agendaSync';
 import { lerAgendaSync, salvarAgendaSync, sincronizarSeAgendado } from '../src/services/syncAutomatico';
 import { gravarConfiguracao, salvarChaveGarmin } from '../src/services/configuracoes';
+import { ajustesDoCusto } from '../src/dominio/custoEsforco';
+import { analisarTreinos, tendenciaCusto, TreinoAnalisado } from '../src/dominio/analise';
+import type { TreinoParaExport } from '../src/dominio/exportIa';
 import { criarBancoDeTeste } from './bancoDeTeste';
 
 describe('copiar previsto', () => {
@@ -203,5 +206,34 @@ describe('sync automático por horário', () => {
     await salvarChaveGarmin('chave');
     await gravarConfiguracao('ultima_sincronizacao_garmin', em(27, 6, 40).toISOString());
     expect(await sincronizarSeAgendado(em(27, 7))).toBeNull(); // já sincronizou depois das 06:30
+  });
+});
+
+describe('custo de esforço explicado', () => {
+  it('mostra os ajustes e a referência usada no índice', () => {
+    expect(ajustesDoCusto({ distanciaKm: 10, elevacaoM: 200, temperaturaC: 25 })).toEqual({
+      subidaMPorKm: 20,
+      subidaPct: 2,
+      calorPct: 10,
+    });
+    const treino = (data: string, fcMedia: number) =>
+      ({ data, tipoPrevisto: 'rodagem', distanciaKm: 10, duracaoSegundos: 3000, fcMedia, elevacaoM: 0, rpe: null, temperaturaC: 15 }) as unknown as TreinoParaExport;
+    const analisados = analisarTreinos([
+      treino('2026-10-01', 150),
+      treino('2026-10-03', 150),
+      treino('2026-10-05', 150),
+      treino('2026-10-08', 165),
+    ]);
+    expect(analisados[3]).toMatchObject({ indice: 110, referencia: 750, nReferencia: 3 });
+  });
+
+  it('tendência compara as últimas 4 semanas com as 4 anteriores', () => {
+    const ponto = (data: string, indice: number) => ({ treino: { data }, indice }) as unknown as TreinoAnalisado;
+    const lista = [
+      ...['2026-10-05', '2026-10-10', '2026-10-15'].map((d) => ponto(d, 100)),
+      ...['2026-11-05', '2026-11-10', '2026-11-15'].map((d) => ponto(d, 95)),
+    ];
+    expect(tendenciaCusto(lista, '2026-11-27')).toEqual({ variacaoPct: -5, recentes: 3, anteriores: 3 });
+    expect(tendenciaCusto(lista.slice(0, 4), '2026-11-27')).toBeNull();
   });
 });

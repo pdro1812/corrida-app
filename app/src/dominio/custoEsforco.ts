@@ -52,7 +52,19 @@ export function calcularCustoEsforco(dados: DadosEsforco): CustoEsforco {
   };
 }
 
-function mediana(valores: number[]): number | null {
+// Ajustes aplicados num treino, em %, para explicar o número na tela.
+export function ajustesDoCusto(dados: Pick<DadosEsforco, 'distanciaKm' | 'elevacaoM' | 'temperaturaC'>) {
+  const km = dados.distanciaKm && dados.distanciaKm > 0.2 ? dados.distanciaKm : null;
+  const subidaPorKm = km ? (dados.elevacaoM ?? 0) / km : 0;
+  const calor = Math.max(0, (dados.temperaturaC ?? TEMPERATURA_NEUTRA_C) - TEMPERATURA_NEUTRA_C);
+  return {
+    subidaMPorKm: Math.round(subidaPorKm),
+    subidaPct: Number((subidaPorKm * CUSTO_SUBIDA_POR_M_KM * 100).toFixed(1)),
+    calorPct: Number((calor * CUSTO_CALOR_POR_GRAU * 100).toFixed(1)),
+  };
+}
+
+export function mediana(valores: number[]): number | null {
   if (valores.length === 0) return null;
   const ordenados = [...valores].sort((a, b) => a - b);
   const meio = Math.floor(ordenados.length / 2);
