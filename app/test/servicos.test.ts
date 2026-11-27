@@ -225,7 +225,10 @@ describe('sincronização com a Garmin (fetch simulado)', () => {
       atividadesImportadas: 1,
       atividadesJaExistentes: 0,
       treinosCasadosComPrevisto: 1,
+      idsImportados: [expect.any(String)],
     });
+    // v2: o FIT de todo treino é lido e gera a linha de métricas
+    expect(await banco.todos('SELECT treino_realizado_id FROM treino_metricas')).toHaveLength(1);
 
     const treino = await buscarTreinoPrevisto(await idDoPrevisto('2026-10-08'));
     expect(treino.status).toBe('realizado');
@@ -239,6 +242,14 @@ describe('sincronização com a Garmin (fetch simulado)', () => {
     // Idempotente (RF14) e reaproveita o token
     expect(await sincronizarGarmin()).toMatchObject({ atividadesImportadas: 0, atividadesJaExistentes: 1 });
     expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/token'))).toHaveLength(1);
+  });
+
+  it('não importa de novo uma atividade excluída pelo usuário', async () => {
+    await sincronizarGarmin();
+    const { id } = (await banco.primeiro<{ id: string }>("SELECT id FROM treino_realizado WHERE garmin_activity_id = '111'"))!;
+    await excluirTreinoRealizado(id);
+    expect(await sincronizarGarmin()).toMatchObject({ atividadesImportadas: 0, atividadesJaExistentes: 1 });
+    expect(await banco.todos('SELECT id FROM treino_realizado')).toHaveLength(0);
   });
 
   it('nunca lança: sem chave ou com a Garmin fora do ar devolve ok:false (RNF12)', async () => {

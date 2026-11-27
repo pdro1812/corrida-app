@@ -113,9 +113,116 @@ const MIGRACOES: string[] = [
     valor TEXT NOT NULL
   );
   `,
+  // v2: métricas completas do FIT e clima na hora do treino (1:1 com
+  // treino_realizado). Coordenada guardada já arredondada (~1 km).
+  `
+  CREATE TABLE treino_metricas (
+    treino_realizado_id TEXT PRIMARY KEY REFERENCES treino_realizado(id) ON DELETE CASCADE,
+    hora_inicio TEXT,
+    latitude REAL,
+    longitude REAL,
+    cadencia_media_ppm INTEGER,
+    cadencia_max_ppm INTEGER,
+    potencia_media_w INTEGER,
+    potencia_normalizada_w INTEGER,
+    oscilacao_vertical_mm REAL,
+    razao_vertical_pct REAL,
+    tempo_contato_solo_ms INTEGER,
+    comprimento_passada_m REAL,
+    calorias INTEGER,
+    temperatura_relogio_c REAL,
+    descida_m REAL,
+    efeito_treino_aerobico REAL,
+    efeito_treino_anaerobico REAL,
+    carga_treino REAL,
+    desacoplamento_pct REAL,
+    clima_temperatura_c REAL,
+    clima_sensacao_termica_c REAL,
+    clima_umidade_pct REAL,
+    clima_ponto_orvalho_c REAL,
+    clima_vento_kmh REAL,
+    clima_precipitacao_mm REAL,
+    clima_codigo_tempo INTEGER,
+    clima_buscado_em TEXT,
+    fit_lido_em TEXT
+  );
+  `,
+  // v2: recuperação diária da Garmin (sono, HRV, stress, Body Battery,
+  // resumo, VO2max). JSON podado por dia e fonte; a leitura fica em
+  // dominio/bemEstar.ts.
+  `
+  CREATE TABLE bem_estar_dia (
+    data TEXT NOT NULL,
+    fonte TEXT NOT NULL,
+    json TEXT NOT NULL,
+    buscado_em TEXT NOT NULL,
+    PRIMARY KEY (data, fonte)
+  );
+  `,
+  // Export para IA: blocos do treino com métricas robustas, segmentos por
+  // km, trechos extras e histogramas de FC/pace (dominio/blocosFit.ts),
+  // guardados como JSON. `versao` permite recalcular quando a análise mudar.
+  `
+  CREATE TABLE treino_analise (
+    treino_realizado_id TEXT PRIMARY KEY REFERENCES treino_realizado(id) ON DELETE CASCADE,
+    versao INTEGER NOT NULL,
+    json TEXT NOT NULL,
+    gerado_em TEXT NOT NULL
+  );
+  `,
+  // Recordes pessoais (melhores tempos por distância), para o perfil do
+  // banco de análise. Independentes de ciclo.
+  `
+  CREATE TABLE recorde_pessoal (
+    id TEXT PRIMARY KEY,
+    distancia_km REAL NOT NULL,
+    tempo_segundos INTEGER NOT NULL,
+    data TEXT,
+    descricao TEXT,
+    criado_em TEXT NOT NULL
+  );
+  `,
+  // Atividades do Garmin excluídas pelo usuário (ex.: caminhada marcada
+  // como corrida). O sync pula esses IDs para não importar de novo.
+  `
+  CREATE TABLE atividade_ignorada (
+    garmin_activity_id TEXT PRIMARY KEY,
+    data TEXT,
+    ignorada_em TEXT NOT NULL
+  );
+  `,
+  // Blocos (mesociclos) do ciclo: Base, Desenvolvimento, Específico...
+  // As semanas entram no bloco pela data (dominio/blocosCiclo.ts).
+  `
+  CREATE TABLE bloco_ciclo (
+    id TEXT PRIMARY KEY,
+    ciclo_id TEXT NOT NULL REFERENCES ciclo(id) ON DELETE CASCADE,
+    ordem INTEGER NOT NULL,
+    nome TEXT NOT NULL,
+    tipo TEXT NOT NULL,
+    data_inicio TEXT NOT NULL,
+    data_fim TEXT NOT NULL,
+    objetivo TEXT,
+    criado_em TEXT NOT NULL
+  );
+  CREATE INDEX bloco_ciclo_ciclo ON bloco_ciclo(ciclo_id);
+  `,
+  // Recorde importado de uma atividade do Garmin (inteira ou melhor trecho).
+  `
+  ALTER TABLE recorde_pessoal ADD COLUMN garmin_activity_id TEXT;
+  `,
 ];
 
 export const VERSAO_ESQUEMA = MIGRACOES.length;
+
+export const COLUNAS_TREINO_METRICAS = [
+  'treino_realizado_id', 'hora_inicio', 'latitude', 'longitude', 'cadencia_media_ppm', 'cadencia_max_ppm',
+  'potencia_media_w', 'potencia_normalizada_w', 'oscilacao_vertical_mm', 'razao_vertical_pct',
+  'tempo_contato_solo_ms', 'comprimento_passada_m', 'calorias', 'temperatura_relogio_c', 'descida_m',
+  'efeito_treino_aerobico', 'efeito_treino_anaerobico', 'carga_treino', 'desacoplamento_pct',
+  'clima_temperatura_c', 'clima_sensacao_termica_c', 'clima_umidade_pct', 'clima_ponto_orvalho_c',
+  'clima_vento_kmh', 'clima_precipitacao_mm', 'clima_codigo_tempo', 'clima_buscado_em', 'fit_lido_em',
+] as const;
 
 // Tabelas que entram no backup, na ordem de inserção (pais antes dos
 // filhos), com a lista fechada de colunas — o restore só aceita essas
@@ -124,6 +231,7 @@ export const TABELAS_BACKUP: Record<string, readonly string[]> = {
   ciclo: ['id', 'nome', 'data_inicio', 'data_fim', 'status', 'criado_em'],
   importacao: ['id', 'ciclo_id', 'nome_arquivo', 'semanas_criadas', 'treinos_criados', 'linhas_com_erro', 'criado_em'],
   semana: ['id', 'ciclo_id', 'numero_semana', 'data_inicio', 'data_fim', 'fase', 'rotina_extra'],
+  bloco_ciclo: ['id', 'ciclo_id', 'ordem', 'nome', 'tipo', 'data_inicio', 'data_fim', 'objetivo', 'criado_em'],
   prova: [
     'id', 'ciclo_id', 'tipo', 'nome', 'data', 'distancia_km', 'meta_tempo_segundos',
     'resultado_tempo_segundos', 'resultado_pace', 'concluida',
@@ -145,6 +253,11 @@ export const TABELAS_BACKUP: Record<string, readonly string[]> = {
     'id', 'treino_realizado_id', 'ordem', 'tipo', 'repeticao_numero', 'tempo_segundos', 'distancia_km',
     'pace_medio', 'fc_media',
   ],
+  treino_metricas: COLUNAS_TREINO_METRICAS,
+  bem_estar_dia: ['data', 'fonte', 'json', 'buscado_em'],
+  treino_analise: ['treino_realizado_id', 'versao', 'json', 'gerado_em'],
+  recorde_pessoal: ['id', 'distancia_km', 'tempo_segundos', 'data', 'descricao', 'criado_em', 'garmin_activity_id'],
+  atividade_ignorada: ['garmin_activity_id', 'data', 'ignorada_em'],
 };
 
 // Divide um bloco de migração em comandos — os drivers executam um por vez.

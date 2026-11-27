@@ -1,5 +1,8 @@
 import { registerRootComponent } from 'expo';
 
+// Define a tarefa de sync em segundo plano antes do App (exigência do
+// expo-task-manager: a tarefa precisa existir quando o sistema acorda o JS).
+import './src/services/tarefaSync';
 import App from './App';
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);

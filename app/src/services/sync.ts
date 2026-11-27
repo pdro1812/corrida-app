@@ -1,12 +1,18 @@
+import { melhorTrechoDoFit } from '../dominio/melhorTrecho';
 import { Banco, obterBanco } from '../db/banco';
 import {
   AtividadeGarmin,
   ehAtividadeDeCorrida,
-  extrairLapsDoZip,
-  LapGarmin,
+  extrairFitDoZip,
+  extrairLapsDoFit,
   mapearAtividade,
   mapearLapsParaIntervalos,
 } from '../dominio/garmin';
+import { extrairMetricasDoFit, MetricasFit } from '../dominio/metricasFit';
+import { AnaliseTreino, analiseVazia, extrairAnaliseDoFit } from '../dominio/blocosFit';
+import { completarClimaPendente, gravarAnalise, gravarMetricasFit, treinosSemMetricas } from './metricas';
+import { sincronizarBemEstar } from './bemEstar';
+import { descreverEstrutura, FONTES_BEM_ESTAR } from '../dominio/bemEstar';
 import { ResultadoSincronizacao } from '../types/modelo';
 import { gravarConfiguracao, lerConfiguracao, obterChaveGarmin } from './configuracoes';
 import { agoraIso, novoId, somarDias } from './linhas';
@@ -89,24 +95,61 @@ async function buscarAtividadesRecentes(limite: number): Promise<AtividadeGarmin
   return (await resposta.json()) as AtividadeGarmin[];
 }
 
-// Laps vêm do arquivo FIT original (a API não expõe splits em JSON). Falha
-// em uma atividade não aborta o sync — ela entra sem intervalos.
-async function buscarLaps(activityId: number): Promise<LapGarmin[]> {
+// Corridas do Garmin num período (inclusive as nunca sincronizadas), para
+// importar recordes antigos. Datas AAAA-MM-DD validadas antes de ir na URL.
+export async function buscarCorridasNoPeriodo(inicio: string, fim: string): Promise<AtividadeGarmin[]> {
+  const data = /^\d{4}-\d{2}-\d{2}$/;
+  if (!data.test(inicio) || !data.test(fim)) throw new GarminError('Datas no formato AAAA-MM-DD');
+  const resposta = await getGarmin(
+    `/activitylist-service/activities/search/activities?startDate=${inicio}&endDate=${fim}&start=0&limit=200`,
+  );
+  return ((await resposta.json()) as AtividadeGarmin[]).filter(ehAtividadeDeCorrida);
+}
+
+// Melhor trecho de `metros` dentro de uma atividade (baixa o FIT dela).
+export async function melhorTrechoDaAtividade(garminActivityId: string, metros: number) {
+  if (!/^\d+$/.test(garminActivityId)) throw new GarminError('ID de atividade inválido');
+  const fit = await baixarFit(garminActivityId);
+  if (!fit) throw new GarminError('Não foi possível baixar o arquivo da atividade');
+  return melhorTrechoDoFit(fit, metros);
+}
+
+// Laps e métricas completas vêm do arquivo FIT original (a API não expõe
+// splits em JSON). Falha em uma atividade não aborta o sync — ela entra sem
+// intervalos/métricas e as métricas são tentadas de novo no próximo sync.
+async function baixarFit(activityId: number | string): Promise<Uint8Array | null> {
   try {
     const resposta = await getGarmin(
       `/download-service/files/activity/${activityId}`,
       // Só 'application/zip' responde 406.
       'application/zip, application/x-zip-compressed, application/octet-stream',
     );
-    return extrairLapsDoZip(new Uint8Array(await resposta.arrayBuffer()));
+    return extrairFitDoZip(new Uint8Array(await resposta.arrayBuffer()));
   } catch {
-    return [];
+    return null;
   }
 }
 
-async function importarAtividade(banco: Banco, atividade: AtividadeGarmin): Promise<void> {
+function lerFit(fit: Uint8Array | null) {
+  const vazio = { laps: [], metricas: null, analise: null };
+  if (!fit) return vazio;
+  try {
+    let analise: AnaliseTreino | null = null;
+    try {
+      analise = extrairAnaliseDoFit(fit);
+    } catch {
+      // análise por blocos é opcional: não pode impedir laps e métricas
+    }
+    return { laps: extrairLapsDoFit(fit), metricas: extrairMetricasDoFit(fit) as MetricasFit | null, analise };
+  } catch {
+    return vazio;
+  }
+}
+
+async function importarAtividade(banco: Banco, atividade: AtividadeGarmin): Promise<string> {
   const dados = mapearAtividade(atividade);
-  const intervalos = (atividade.lapCount ?? 0) > 1 ? mapearLapsParaIntervalos(await buscarLaps(atividade.activityId)) : [];
+  const { laps, metricas, analise } = lerFit(await baixarFit(atividade.activityId));
+  const intervalos = (atividade.lapCount ?? 0) > 1 ? mapearLapsParaIntervalos(laps) : [];
   const id = novoId();
   await banco.transacao(async () => {
     await banco.executar(
@@ -144,7 +187,58 @@ async function importarAtividade(banco: Banco, atividade: AtividadeGarmin): Prom
         ],
       );
     }
+    if (metricas) await gravarMetricasFit(banco, id, metricas);
+    // FIT lido sem amostras: grava análise vazia para não baixar de novo.
+    if (metricas || analise) await gravarAnalise(banco, id, analise ?? analiseVazia());
   });
+  return id;
+}
+
+// v2: treinos importados antes das métricas completas (ou da análise por
+// blocos) ganham o FIT lido de novo.
+async function completarMetricasAntigas(banco: Banco, limite = 10): Promise<number> {
+  let completados = 0;
+  for (const treino of await treinosSemMetricas(banco, limite)) {
+    const { metricas, analise } = lerFit(await baixarFit(treino.garmin_activity_id));
+    if (!metricas && !analise) continue;
+    if (metricas) await gravarMetricasFit(banco, treino.id, metricas);
+    await gravarAnalise(banco, treino.id, analise ?? analiseVazia());
+    completados++;
+  }
+  return completados;
+}
+
+async function buscarJsonGarmin(caminho: string): Promise<unknown> {
+  return (await getGarmin(caminho)).json();
+}
+
+// v2: testa cada endpoint de recuperação com a chave do usuário e devolve
+// só o status HTTP e a estrutura (nomes de campos), nunca os valores.
+export async function diagnosticarBemEstar(): Promise<string> {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const inicio = somarDias(hoje, -2);
+  const linhas: string[] = [`Diagnóstico Garmin Personal API (${inicio} a ${hoje})`];
+  for (const [fonte, caminho] of Object.entries(FONTES_BEM_ESTAR)) {
+    const rota = caminho(inicio, hoje).split('?')[0];
+    try {
+      const resposta = await fetch(URL_BASE + caminho(inicio, hoje), {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${await obterToken()}` },
+        signal: comTimeout(),
+      });
+      const corpo: unknown = resposta.ok ? await resposta.json().catch(() => 'não-JSON') : null;
+      linhas.push(`\n## ${fonte}: HTTP ${resposta.status} ${rota}`);
+      if (corpo !== null) linhas.push(descreverEstrutura(corpo));
+    } catch (erro) {
+      linhas.push(`\n## ${fonte}: falhou (${erro instanceof GarminError ? erro.message : 'rede'}) ${rota}`);
+    }
+  }
+  return linhas.join('\n');
+}
+
+async function buscarJsonClima(url: string): Promise<unknown> {
+  const resposta = await fetch(url, { headers: { Accept: 'application/json' }, signal: comTimeout() });
+  if (!resposta.ok) throw new Error(`Open-Meteo respondeu HTTP ${resposta.status}`);
+  return resposta.json();
 }
 
 const diasEntre = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000;
@@ -186,20 +280,26 @@ export async function sincronizarGarmin(limite = 20): Promise<ResultadoSincroniz
     const atividades = await buscarAtividadesRecentes(limite);
     let atividadesImportadas = 0;
     let atividadesJaExistentes = 0;
+    const idsImportados: string[] = [];
 
     for (const atividade of atividades.filter(ehAtividadeDeCorrida)) {
-      const existe = await banco.primeiro('SELECT id FROM treino_realizado WHERE garmin_activity_id = ?', [
-        String(atividade.activityId),
-      ]);
+      const garminId = String(atividade.activityId);
+      const existe =
+        (await banco.primeiro('SELECT id FROM treino_realizado WHERE garmin_activity_id = ?', [garminId])) ??
+        (await banco.primeiro('SELECT garmin_activity_id FROM atividade_ignorada WHERE garmin_activity_id = ?', [garminId]));
       if (existe) {
         atividadesJaExistentes++;
         continue;
       }
-      await importarAtividade(banco, atividade);
+      idsImportados.push(await importarAtividade(banco, atividade));
       atividadesImportadas++;
     }
 
     const treinosCasadosComPrevisto = await casarPendentesComPrevisto(banco);
+    // Etapas da v2: não podem derrubar o sync principal.
+    await completarMetricasAntigas(banco).catch(() => 0);
+    await completarClimaPendente(banco, buscarJsonClima).catch(() => 0);
+    await sincronizarBemEstar(banco, buscarJsonGarmin).catch(() => ({}));
     await gravarConfiguracao(CONFIG_ULTIMA_SINCRONIZACAO, agoraIso());
     return {
       ok: true,
@@ -207,21 +307,13 @@ export async function sincronizarGarmin(limite = 20): Promise<ResultadoSincroniz
       atividadesImportadas,
       atividadesJaExistentes,
       treinosCasadosComPrevisto,
+      idsImportados,
     };
   } catch (erro) {
     const mensagem =
       erro instanceof GarminError ? erro.message : 'Não foi possível falar com a Garmin — verifique a internet';
     return { ok: false, ...vazio, erro: mensagem };
   }
-}
-
-// Substitui o antigo cron diário: ao abrir o app, sincroniza se a última
-// sincronização tiver mais de `horas` horas (e houver chave configurada).
-export async function sincronizarSeNecessario(horas = 12): Promise<ResultadoSincronizacao | null> {
-  if (!(await obterChaveGarmin())) return null;
-  const ultima = await lerConfiguracao(CONFIG_ULTIMA_SINCRONIZACAO);
-  if (ultima && Date.now() - Date.parse(ultima) < horas * 60 * 60 * 1000) return null;
-  return sincronizarGarmin();
 }
 
 export async function ultimaSincronizacao(): Promise<string | null> {

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { HomeStackParamList } from '../types/navigation';
+import { RootStackParamList } from '../types/navigation';
 import { Screen } from '../components/Screen';
 import { TextField } from '../components/TextField';
 import { Button } from '../components/Button';
@@ -9,7 +9,7 @@ import { Banner } from '../components/Banner';
 import { registrarTreinoManual } from '../services/treinos';
 import { espacamento } from '../theme/theme';
 
-type Props = NativeStackScreenProps<HomeStackParamList, 'RegistrarTreinoManual'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'RegistrarTreinoManual'>;
 
 export function RegistrarTreinoManualScreen({ route, navigation }: Props) {
   const { semanaId, treinoPrevistoId } = route.params;

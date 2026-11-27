@@ -19,6 +19,18 @@ export async function escolherArquivoTexto(mimeTypes: string[]): Promise<Arquivo
 
 // Gera o backup e grava na pasta que o usuário escolher (ex: Downloads).
 // Devolve null se o usuário cancelar a escolha da pasta.
+// v2: grava o export para IA (Markdown) na pasta escolhida.
+export async function salvarTextoNoCelular(nome: string, conteudo: string, mimeType = 'text/markdown'): Promise<boolean> {
+  let pasta: Directory;
+  try {
+    pasta = await Directory.pickDirectoryAsync();
+  } catch {
+    return false; // seletor cancelado
+  }
+  pasta.createFile(nome, mimeType).write(conteudo);
+  return true;
+}
+
 export async function salvarBackupNoCelular(): Promise<{ nome: string; resumo: ResumoBackup } | null> {
   let pasta: Directory;
   try {
@@ -30,4 +42,16 @@ export async function salvarBackupNoCelular(): Promise<{ nome: string; resumo: R
   const nome = nomeArquivoBackup();
   pasta.createFile(nome, 'application/json').write(JSON.stringify(backup));
   return { nome, resumo: resumirBackup(backup) };
+}
+
+// Grava um arquivo binário (ex: o banco de análise) na pasta escolhida.
+export async function salvarBytesNoCelular(nome: string, bytes: Uint8Array, mimeType: string): Promise<boolean> {
+  let pasta: Directory;
+  try {
+    pasta = await Directory.pickDirectoryAsync();
+  } catch {
+    return false; // seletor cancelado
+  }
+  pasta.createFile(nome, mimeType).write(bytes);
+  return true;
 }

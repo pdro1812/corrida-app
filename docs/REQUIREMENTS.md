@@ -25,7 +25,7 @@
 
 | ID | Requisito |
 |---|---|
-| RF10 | Sincronizar automaticamente as atividades do Garmin Connect 1x/dia, em horário configurável. |
+| RF10 | Sincronizar automaticamente as atividades do Garmin Connect nos horários configurados (padrão 08:00 e 20:00), em segundo plano; o Android pode atrasar a execução em até ~1 hora. |
 | RF11 | Permitir disparo manual da sincronização a partir do app. |
 | RF12 | Importar por atividade: data, distância, duração, pace médio, FC média/máxima, elevação. |
 | RF13 | Para atividades intervaladas, importar splits (aquecimento, tiros, recuperações) com tempo, distância, pace e FC de cada trecho. |

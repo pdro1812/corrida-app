@@ -49,6 +49,8 @@ export interface DadosCiclo {
   provaData?: string;
   provaDistanciaKm?: number;
   provaMetaTempoSegundos?: number;
+  // Prova já cadastrada sem ciclo que passa a ser a alvo deste ciclo.
+  provaAlvoId?: string;
 }
 
 // A prova alvo nasce junto com o ciclo (ver docs/DATA_MODEL.md).
@@ -62,18 +64,23 @@ export async function criarCiclo(dados: DadosCiclo): Promise<Ciclo> {
       'INSERT INTO ciclo (id, nome, data_inicio, data_fim, status, criado_em) VALUES (?, ?, ?, ?, ?, ?)',
       [id, dados.nome.trim(), soData(dados.dataInicio), soData(dados.dataFim), 'ativo', agoraIso()],
     );
-    await banco.executar(
-      `INSERT INTO prova (id, ciclo_id, tipo, nome, data, distancia_km, meta_tempo_segundos)
-       VALUES (?, ?, 'alvo', ?, ?, ?, ?)`,
-      [
-        novoId(),
-        id,
-        provaNome.trim(),
-        soData(provaData),
-        dados.provaDistanciaKm ?? null,
-        dados.provaMetaTempoSegundos ?? null,
-      ],
-    );
+    const valores = [provaNome.trim(), soData(provaData), dados.provaDistanciaKm ?? null, dados.provaMetaTempoSegundos ?? null];
+    const existente = dados.provaAlvoId
+      ? await banco.primeiro('SELECT id FROM prova WHERE id = ? AND ciclo_id IS NULL', [dados.provaAlvoId])
+      : null;
+    if (existente && dados.provaAlvoId) {
+      await banco.executar(
+        `UPDATE prova SET ciclo_id = ?, tipo = 'alvo', nome = ?, data = ?, distancia_km = ?, meta_tempo_segundos = ?
+          WHERE id = ?`,
+        [id, ...valores, dados.provaAlvoId],
+      );
+    } else {
+      await banco.executar(
+        `INSERT INTO prova (id, ciclo_id, tipo, nome, data, distancia_km, meta_tempo_segundos)
+         VALUES (?, ?, 'alvo', ?, ?, ?, ?)`,
+        [novoId(), id, ...valores],
+      );
+    }
   });
   return buscarCiclo(id);
 }

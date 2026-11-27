@@ -62,6 +62,17 @@ uma base visual mínima (não existia nenhuma até agora — telas eram só
 
 - [ ] CI/CD com deploy real configurado (Railway/Render + EAS Build) — resolve RNF02 (HTTPS) via TLS automático do provedor
 - [ ] Export manual de dados sob demanda (RNF07) — endpoint + botão simples pra baixar um dump/export do banco
+- [x] Export para análise por IA em grafo (contexto, proposto e executado por bloco), com métricas robustas no lugar de mín/máx e trechos não planejados separados (`dominio/blocosFit.ts`, `dominio/exportGrafo.ts`)
+- [x] Banco de análise em SQLite (tabelas + views + leia_me com perfil, dicionário e consultas) para a IA consultar só o necessário; recordes pessoais e observações do perfil em Configurações (`dominio/bancoAnalise.ts`, `services/exportAnalise.ts`)
+- [x] Excluir treino do Garmin sem reimportar no próximo sync (`atividade_ignorada`); segurar o item no Diário exclui (RF14/RF16)
+- [x] Copiar o previsto para a área de transferência como `P: <previsto>` (semana, detalhe e Hoje)
+- [x] Uma notificação de esforço (RPE) por treino, sem repetir as já avisadas (RF18)
+- [x] Navegação em 4 abas (Hoje, Ciclo, Treinos, Análise) com as telas de detalhe numa pilha raiz
+- [x] Calendário de provas: provas fora do ciclo (objetivo futuro ou avulsa) e ciclo novo usando uma prova já cadastrada como alvo (RF02)
+- [x] Blocos do ciclo (`bloco_ciclo`): linha do tempo, números por bloco, gerar das fases da planilha ou divisão padrão; entram no banco de análise (RF01). Antecipa parte do item "Progresso do Ciclo" da Fase 2, com o aval do dono do projeto (2026-11-27)
+- [x] Importar recorde de uma corrida do Garmin por período, da atividade inteira ou do melhor trecho no FIT
+- [x] Sync automático nos horários configurados (08:00 e 20:00), em segundo plano com `expo-background-task` (RF10)
+- [x] Custo de esforço explicado no Lab: como ler, faixas, conta por treino e tendência de 4 semanas
 - [ ] Testar fluxo completo: import de planilha → sync Garmin → comparação → feedback
 - [ ] Revisar todos os RF/RNF de `docs/REQUIREMENTS.md` contra o que foi implementado
 
