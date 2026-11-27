@@ -65,11 +65,19 @@ async function buscarLinha(banco: Banco, id: string): Promise<LinhaTreinoRealiza
   return linha;
 }
 
-// Remove um realizado errado/duplicado sem apagar o previsto.
+// Remove um realizado errado/duplicado sem apagar o previsto. Se veio do
+// Garmin, o ID vai para atividade_ignorada, senão o próximo sync importaria
+// a mesma atividade de novo.
 export async function excluirTreinoRealizado(id: string): Promise<void> {
   const banco = await obterBanco();
   const treino = await buscarLinha(banco, id);
   await banco.transacao(async () => {
+    if (treino.garmin_activity_id) {
+      await banco.executar(
+        'INSERT OR REPLACE INTO atividade_ignorada (garmin_activity_id, data, ignorada_em) VALUES (?, ?, ?)',
+        [treino.garmin_activity_id, treino.data, new Date().toISOString()],
+      );
+    }
     await banco.executar('DELETE FROM treino_realizado WHERE id = ?', [id]);
     await liberarPrevistoSeSemRealizados(banco, treino.treino_previsto_id);
   });

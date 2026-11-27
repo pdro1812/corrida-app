@@ -78,6 +78,7 @@ export function lerBackup(json: string): Backup {
 
 // Ordem de remoção: filhos antes dos pais.
 const ORDEM_REMOCAO = [
+  'atividade_ignorada',
   'recorde_pessoal',
   'treino_analise',
   'bem_estar_dia',

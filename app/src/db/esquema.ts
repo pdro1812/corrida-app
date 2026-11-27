@@ -182,6 +182,15 @@ const MIGRACOES: string[] = [
     criado_em TEXT NOT NULL
   );
   `,
+  // Atividades do Garmin excluídas pelo usuário (ex.: caminhada marcada
+  // como corrida). O sync pula esses IDs para não importar de novo.
+  `
+  CREATE TABLE atividade_ignorada (
+    garmin_activity_id TEXT PRIMARY KEY,
+    data TEXT,
+    ignorada_em TEXT NOT NULL
+  );
+  `,
 ];
 
 export const VERSAO_ESQUEMA = MIGRACOES.length;
@@ -227,6 +236,7 @@ export const TABELAS_BACKUP: Record<string, readonly string[]> = {
   bem_estar_dia: ['data', 'fonte', 'json', 'buscado_em'],
   treino_analise: ['treino_realizado_id', 'versao', 'json', 'gerado_em'],
   recorde_pessoal: ['id', 'distancia_km', 'tempo_segundos', 'data', 'descricao', 'criado_em'],
+  atividade_ignorada: ['garmin_activity_id', 'data', 'ignorada_em'],
 };
 
 // Divide um bloco de migração em comandos — os drivers executam um por vez.

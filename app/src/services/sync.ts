@@ -263,9 +263,10 @@ export async function sincronizarGarmin(limite = 20): Promise<ResultadoSincroniz
     const idsImportados: string[] = [];
 
     for (const atividade of atividades.filter(ehAtividadeDeCorrida)) {
-      const existe = await banco.primeiro('SELECT id FROM treino_realizado WHERE garmin_activity_id = ?', [
-        String(atividade.activityId),
-      ]);
+      const garminId = String(atividade.activityId);
+      const existe =
+        (await banco.primeiro('SELECT id FROM treino_realizado WHERE garmin_activity_id = ?', [garminId])) ??
+        (await banco.primeiro('SELECT garmin_activity_id FROM atividade_ignorada WHERE garmin_activity_id = ?', [garminId]));
       if (existe) {
         atividadesJaExistentes++;
         continue;

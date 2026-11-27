@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { TreinoRealizadoComPrevisto } from '../types/modelo';
 import { Screen } from '../components/Screen';
@@ -8,7 +8,7 @@ import { Chip } from '../components/Chip';
 import { Banner } from '../components/Banner';
 import { EmptyState } from '../components/EmptyState';
 import { LoadingState } from '../components/LoadingState';
-import { listarTreinosRealizados } from '../services/treinosRealizados';
+import { excluirTreinoRealizado, listarTreinosRealizados } from '../services/treinosRealizados';
 import { calcularResumoRecente, corDoRpe } from '../utils/resumoTreinos';
 import { calcularVolumeSemanal } from '../utils/volumeSemanal';
 import { VolumeSemanalCard } from '../components/VolumeSemanalCard';
@@ -23,6 +23,29 @@ export function DiarioTreinosScreen() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [treinos, setTreinos] = useState<TreinoRealizadoComPrevisto[]>([]);
+
+  // Segurar o item exclui o treino (ex.: caminhada marcada sem querer).
+  // Atividades do Garmin ficam marcadas para o sync não importar de novo.
+  function confirmarExclusao(treino: TreinoRealizadoComPrevisto) {
+    Alert.alert(
+      'Excluir treino',
+      `${formatarData(treino.data)} · ${formatarKm(treino.distanciaKm)}. ` +
+        (treino.fonte === 'garmin' ? 'A atividade não volta no próximo sync. ' : '') +
+        'O previsto, se houver, volta para pendente.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: () => {
+            excluirTreinoRealizado(treino.id)
+              .then(() => setTreinos((atual) => atual.filter((t) => t.id !== treino.id)))
+              .catch((erroCapturado) => setErro(erroCapturado instanceof Error ? erroCapturado.message : String(erroCapturado)));
+          },
+        },
+      ],
+    );
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -62,7 +85,11 @@ export function DiarioTreinosScreen() {
             </>
           ) : null
         }
-        renderItem={({ item }) => <LinhaTreino treino={item} />}
+        renderItem={({ item }) => (
+          <Pressable onLongPress={() => confirmarExclusao(item)} delayLongPress={400}>
+            <LinhaTreino treino={item} />
+          </Pressable>
+        )}
         ListEmptyComponent={
           <EmptyState
             emoji="📝"

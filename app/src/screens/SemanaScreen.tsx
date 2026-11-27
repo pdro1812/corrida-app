@@ -14,6 +14,7 @@ import { Banner } from '../components/Banner';
 import { EmptyState } from '../components/EmptyState';
 import { LoadingState } from '../components/LoadingState';
 import { TipoTreinoBadge } from '../components/TipoTreinoBadge';
+import { CopiarPrevisto } from '../components/CopiarPrevisto';
 import { cores, espacamento, tipoTreino, tipografia } from '../theme/theme';
 
 type Props = NativeStackScreenProps<HomeStackParamList, 'Semana'>;
@@ -139,8 +140,9 @@ function LinhaTreino({ treino }: { treino: TreinoPrevisto }) {
           {treino.diaSemana} · {formatarData(treino.data)}
         </Text>
       </View>
-      <View style={styles.linhaBadge}>
+      <View style={[styles.linhaBadge, styles.linhaAcoes]}>
         <TipoTreinoBadge tipo={treino.tipo} />
+        <CopiarPrevisto descricao={treino.descricao} />
       </View>
       <Text style={[tipografia.corpo, styles.linhaDescricao]}>{treino.descricao}</Text>
       <Text style={tipografia.legenda}>
@@ -171,6 +173,7 @@ const styles = StyleSheet.create({
   linhaIcone: { fontSize: 16 },
   linhaData: { ...tipografia.corpoForte, textTransform: 'capitalize' },
   linhaBadge: { marginTop: espacamento.xs + 2 },
+  linhaAcoes: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   linhaDescricao: { marginTop: espacamento.xs, marginBottom: espacamento.xs },
   linhaMotivo: { color: cores.erro },
 });

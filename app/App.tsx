@@ -135,8 +135,8 @@ export default function App() {
   useEffect(() => {
     void sincronizarSeNecessario()
       .then(async (resultado) => {
-        // v2: treino novo importado -> pede o RPE por notificação.
-        if (resultado?.ok && (resultado.idsImportados?.length ?? 0) > 0) {
+        // Uma notificação por treino sem RPE que ainda não foi avisado.
+        if (resultado?.ok) {
           await notificarRpePendente(await listarTreinosSemRpe());
         }
       })
