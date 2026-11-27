@@ -18,6 +18,8 @@ Desde 2026-11-08 não existe mais backend. O app guarda tudo num SQLite local e 
 | Banco | `expo-sqlite`, local no aparelho (`src/db/`). Migrations em `src/db/esquema.ts` (`PRAGMA user_version`) |
 | Segredo | Chave da Garmin no `expo-secure-store` (Android Keystore), digitada em Configurações. Nunca vai para o SQLite nem para o backup |
 | Garmin | Personal API oficial (uso pessoal). Token de ~24h obtido com a chave e guardado só em memória. Laps lidos do FIT (ZIP do download-service) com `@garmin/fitsdk` + `fflate` (`src/dominio/garmin.ts`) |
+| v2 (análise) | `treino_metricas` (FIT completo + clima Open-Meteo, coordenada arredondada ~1 km), `bem_estar_dia` (sono, HRV, stress, Body Battery, resumo, VO2max da Personal API). Domínio em `src/dominio/{metricasFit,custoEsforco,clima,bemEstar,analise,exportIa}.ts`. Tela Lab, RPE por notificação local, export Markdown para colar no Claude |
+| Criptografia | SQLCipher (`expo-sqlite` com `useSQLCipher`), chave de 256 bits no SecureStore. `src/db/banco.ts` migra o arquivo antigo sem criptografia na 1ª abertura. Na web (só para testar telas) o banco não é criptografado |
 | Sync | Ao abrir o app, se a última sincronização tiver mais de 12h (`sincronizarSeNecessario`), e também pelo botão manual |
 | Backup | `src/services/backup.ts`: JSON com whitelist de tabelas e colunas (`TABELAS_BACKUP`); a restauração valida tudo e roda numa única transação |
 | Build | APK via EAS Build (`preview` → APK), disparado manualmente |

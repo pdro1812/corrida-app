@@ -1,3 +1,4 @@
+import { NavigatorScreenParams } from '@react-navigation/native';
 import { TreinoPrevisto } from './modelo';
 
 // Fluxo de navegação da aba Home — telas de detalhe/edição que partem
@@ -11,13 +12,15 @@ export type HomeStackParamList = {
   HistoricoCiclos: undefined;
   RegistrarTreinoManual: { semanaId: string; treinoPrevistoId?: string };
   Configuracoes: undefined;
+  AvaliarTreino: { treinoRealizadoId: string };
 };
 
 // Abas fixas na parte inferior (padrão "barra do Instagram"). Provas,
 // Importar e Garmin não recebem cicloId por parâmetro — cada uma busca o
 // ciclo ativo sozinha, já que são acessíveis diretamente pela barra.
 export type RootTabParamList = {
-  HomeTab: undefined;
+  HomeTab: NavigatorScreenParams<HomeStackParamList> | undefined;
+  Lab: undefined;
   Treinos: undefined;
   Provas: undefined;
   Importar: undefined;

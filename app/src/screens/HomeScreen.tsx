@@ -8,6 +8,7 @@ import { Ciclo, Prova, Semana, provaAlvoDoCiclo } from '../types/modelo';
 import { buscarCicloAtivo } from '../services/ciclos';
 import { listarSemanasDoCiclo } from '../services/semanas';
 import { sincronizarGarmin } from '../services/sync';
+import { listarTreinosSemRpe, TreinoSemRpe } from '../services/rpe';
 import { formatarData, formatarKm } from '../utils/formato';
 import {
   agruparSemanasPorStatus,
@@ -44,10 +45,12 @@ export function HomeScreen({ navigation }: Props) {
   const [mensagem, setMensagem] = useState<Mensagem | null>(null);
   const [ciclo, setCiclo] = useState<Ciclo | null>(null);
   const [semanas, setSemanas] = useState<Semana[]>([]);
+  const [semRpe, setSemRpe] = useState<TreinoSemRpe[]>([]);
 
   const carregarDados = useCallback(async () => {
     setCarregando(true);
     try {
+      setSemRpe(await listarTreinosSemRpe());
       const cicloAtivo = await buscarCicloAtivo();
       if (!cicloAtivo) {
         setCiclo(null);
@@ -120,6 +123,19 @@ export function HomeScreen({ navigation }: Props) {
           mensagem={mensagem.mensagem}
           onFechar={() => setMensagem(null)}
         />
+      ) : null}
+
+      {semRpe.length > 0 ? (
+        <Pressable
+          onPress={() => navigation.navigate('AvaliarTreino', { treinoRealizadoId: semRpe[0].id })}
+          accessibilityRole="button"
+        >
+          <Banner
+            tipo="aviso"
+            titulo={semRpe.length === 1 ? '1 treino sem RPE' : `${semRpe.length} treinos sem RPE`}
+            mensagem="Toque para registrar quanto custou (0 a 10)"
+          />
+        </Pressable>
       ) : null}
 
       <Button

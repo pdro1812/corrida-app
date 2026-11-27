@@ -96,11 +96,15 @@ if (typeof globalThis.TextDecoder === 'undefined') {
 }
 
 // O download-service entrega um ZIP com um único `<activityId>_ACTIVITY.fit`.
-export function extrairLapsDoZip(zip: Uint8Array): LapGarmin[] {
+export function extrairFitDoZip(zip: Uint8Array): Uint8Array {
   const arquivos = unzipSync(zip);
   const nomeFit = Object.keys(arquivos).find((nome) => nome.toLowerCase().endsWith('.fit'));
   if (!nomeFit) throw new Error('ZIP da Garmin sem arquivo .fit');
-  return extrairLapsDoFit(arquivos[nomeFit]);
+  return arquivos[nomeFit];
+}
+
+export function extrairLapsDoZip(zip: Uint8Array): LapGarmin[] {
+  return extrairLapsDoFit(extrairFitDoZip(zip));
 }
 
 export function extrairLapsDoFit(fit: Uint8Array): LapGarmin[] {
