@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Ciclo, Prova } from '../types/modelo';
+import { Ciclo } from '../types/modelo';
 import { Screen } from '../components/Screen';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -11,23 +11,26 @@ import { Banner } from '../components/Banner';
 import { EmptyState } from '../components/EmptyState';
 import { LoadingState } from '../components/LoadingState';
 import { buscarCicloAtivo } from '../services/ciclos';
-import { criarProva, excluirProva, listarProvas, registrarResultadoProva } from '../services/provas';
+import { criarProva, excluirProva, listarCalendarioProvas, ProvaDoCalendario, registrarResultadoProva } from '../services/provas';
+import { lerTempo } from '../services/recordes';
+import { calcularDiasAteProva } from '../utils/dashboard';
 import { formatarData, formatarDuracao } from '../utils/formato';
 import { cores, espacamento, tipografia } from '../theme/theme';
 
+// Calendário de provas: todas as provas, do ciclo atual ou fora dele (ex.:
+// o próximo objetivo depois da prova alvo). Uma prova não depende da outra,
+// mas todas entram no perfil da análise.
 export function ProvasScreen() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [ciclo, setCiclo] = useState<Ciclo | null>(null);
-  const [provas, setProvas] = useState<Prova[]>([]);
+  const [provas, setProvas] = useState<ProvaDoCalendario[]>([]);
   const [formularioAberto, setFormularioAberto] = useState(false);
 
   const carregar = useCallback(async () => {
-    setCarregando(true);
     try {
-      const cicloAtivo = await buscarCicloAtivo();
-      setCiclo(cicloAtivo);
-      setProvas(cicloAtivo ? await listarProvas(cicloAtivo.id) : []);
+      setCiclo(await buscarCicloAtivo());
+      setProvas(await listarCalendarioProvas());
     } catch (erroCapturado) {
       setErro(String(erroCapturado));
     } finally {
@@ -54,29 +57,16 @@ export function ProvasScreen() {
     return <LoadingState />;
   }
 
-  if (!ciclo) {
-    return (
-      <Screen>
-        <EmptyState
-          emoji="🏁"
-          titulo="Nenhum ciclo ativo"
-          descricao="Crie um ciclo pra cadastrar a prova alvo e provas secundárias."
-        />
-      </Screen>
-    );
-  }
+  const proximas = provas.filter((p) => !p.concluida);
+  const feitas = provas.filter((p) => p.concluida).reverse();
 
   return (
     <Screen scroll>
       {erro ? <Banner tipo="erro" titulo="Não foi possível concluir a ação" mensagem={erro} onFechar={() => setErro(null)} /> : null}
 
-      {provas.map((prova) => (
-        <LinhaProva key={prova.id} prova={prova} onExcluir={() => void remover(prova.id)} onAtualizado={carregar} onErro={setErro} />
-      ))}
-
       {formularioAberto ? (
         <FormularioProva
-          cicloId={ciclo.id}
+          ciclo={ciclo}
           onCriado={() => {
             setFormularioAberto(false);
             void carregar();
@@ -85,10 +75,31 @@ export function ProvasScreen() {
           onErro={setErro}
         />
       ) : (
-        <Button titulo="+ Adicionar prova secundária" variante="secundaria" onPress={() => setFormularioAberto(true)} />
+        <View style={styles.adicionar}>
+          <Button titulo="+ Adicionar prova" variante="secundaria" onPress={() => setFormularioAberto(true)} />
+        </View>
       )}
+
+      {provas.length === 0 ? (
+        <EmptyState emoji="🏁" titulo="Nenhuma prova cadastrada" descricao="Cadastre a prova alvo ao criar o ciclo, ou adicione provas aqui." />
+      ) : null}
+
+      {proximas.length > 0 ? <Text style={styles.secao}>Próximas</Text> : null}
+      {proximas.map((prova) => (
+        <LinhaProva key={prova.id} prova={prova} onExcluir={() => void remover(prova.id)} onAtualizado={carregar} onErro={setErro} />
+      ))}
+
+      {feitas.length > 0 ? <Text style={styles.secao}>Feitas</Text> : null}
+      {feitas.map((prova) => (
+        <LinhaProva key={prova.id} prova={prova} onExcluir={() => void remover(prova.id)} onAtualizado={carregar} onErro={setErro} />
+      ))}
     </Screen>
   );
+}
+
+function rotuloTipo(prova: ProvaDoCalendario): string {
+  if (prova.tipo === 'alvo') return prova.cicloId ? 'Alvo' : 'Objetivo futuro';
+  return prova.cicloId ? 'Secundária' : 'Avulsa';
 }
 
 function LinhaProva({
@@ -97,7 +108,7 @@ function LinhaProva({
   onAtualizado,
   onErro,
 }: {
-  prova: Prova;
+  prova: ProvaDoCalendario;
   onExcluir: () => void;
   onAtualizado: () => void;
   onErro: (mensagem: string) => void;
@@ -137,9 +148,15 @@ function LinhaProva({
     <Card style={styles.card}>
       <View style={styles.cabecalho}>
         <Text style={tipografia.subtitulo}>{prova.nome}</Text>
-        <Chip rotulo={prova.tipo === 'alvo' ? 'Alvo' : 'Secundária'} selecionado={prova.tipo === 'alvo'} onPress={() => {}} />
+        <Chip rotulo={rotuloTipo(prova)} selecionado={prova.tipo === 'alvo'} onPress={() => {}} />
       </View>
-      <Text style={tipografia.legenda}>{formatarData(prova.data)}</Text>
+      <Text style={tipografia.legenda}>
+        {formatarData(prova.data)}/{prova.data.slice(0, 4)}
+        {prova.distanciaKm ? ` · ${prova.distanciaKm} km` : ''}
+        {prova.metaTempoSegundos ? ` · meta ${formatarDuracao(prova.metaTempoSegundos)}` : ''}
+        {!prova.concluida ? contagem(prova.data) : ''}
+      </Text>
+      <Text style={tipografia.legenda}>{prova.cicloNome ? `Ciclo: ${prova.cicloNome}` : 'Fora de ciclo'}</Text>
 
       {prova.concluida ? (
         <Text style={[tipografia.corpo, styles.resultado]}>
@@ -155,20 +172,29 @@ function LinhaProva({
       ) : (
         <View style={styles.acoes}>
           <Button titulo="Registrar resultado" variante="secundaria" onPress={() => setRegistrandoResultado(true)} />
-          {prova.tipo !== 'alvo' ? <Button titulo="Excluir" variante="perigo" onPress={onExcluir} /> : null}
+          {prova.tipo !== 'alvo' || !prova.cicloId ? <Button titulo="Excluir" variante="perigo" onPress={onExcluir} /> : null}
         </View>
       )}
     </Card>
   );
 }
 
+function contagem(data: string): string {
+  const dias = calcularDiasAteProva(data);
+  if (dias === null || dias < 0) return '';
+  if (dias === 0) return ' · hoje!';
+  return dias < 14 ? ` · em ${dias} dia(s)` : ` · em ${Math.floor(dias / 7)} semanas`;
+}
+
+type Vinculo = 'ciclo' | 'futuro' | 'avulsa';
+
 function FormularioProva({
-  cicloId,
+  ciclo,
   onCriado,
   onCancelar,
   onErro,
 }: {
-  cicloId: string;
+  ciclo: Ciclo | null;
   onCriado: () => void;
   onCancelar: () => void;
   onErro: (mensagem: string) => void;
@@ -176,6 +202,8 @@ function FormularioProva({
   const [nome, setNome] = useState('');
   const [data, setData] = useState('');
   const [distanciaKm, setDistanciaKm] = useState('');
+  const [meta, setMeta] = useState('');
+  const [vinculo, setVinculo] = useState<Vinculo>(ciclo ? 'ciclo' : 'futuro');
   const [salvando, setSalvando] = useState(false);
 
   async function salvar() {
@@ -183,13 +211,19 @@ function FormularioProva({
       onErro('Preencha nome e data da prova');
       return;
     }
+    const metaSegundos = meta.trim() ? lerTempo(meta) : null;
+    if (meta.trim() && metaSegundos === null) {
+      onErro('Meta no formato H:MM:SS ou M:SS');
+      return;
+    }
     setSalvando(true);
     try {
-      await criarProva(cicloId, {
+      await criarProva(vinculo === 'ciclo' && ciclo ? ciclo.id : null, {
         nome: nome.trim(),
-        data,
-        tipo: 'secundaria',
-        distanciaKm: distanciaKm.trim() ? Number(distanciaKm) : undefined,
+        data: data.trim(),
+        tipo: vinculo === 'futuro' ? 'alvo' : 'secundaria',
+        distanciaKm: distanciaKm.trim() ? Number(distanciaKm.replace(',', '.')) : undefined,
+        metaTempoSegundos: metaSegundos ?? undefined,
       });
       onCriado();
     } catch (erroCapturado) {
@@ -199,17 +233,29 @@ function FormularioProva({
     }
   }
 
+  const opcoes: { valor: Vinculo; rotulo: string }[] = [
+    ...(ciclo ? [{ valor: 'ciclo' as const, rotulo: 'Secundária do ciclo atual' }] : []),
+    { valor: 'futuro', rotulo: 'Objetivo futuro (alvo de outro ciclo)' },
+    { valor: 'avulsa', rotulo: 'Avulsa, sem ciclo' },
+  ];
+
   return (
-    <Card>
-      <TextField rotulo="Nome da prova" value={nome} onChangeText={setNome} placeholder="10km de aquecimento" />
-      <TextField rotulo="Data (AAAA-MM-DD)" value={data} onChangeText={setData} placeholder="2026-10-04" />
+    <Card style={styles.card}>
+      <TextField rotulo="Nome da prova" value={nome} onChangeText={setNome} placeholder="NK42k POA" />
+      <TextField rotulo="Data (AAAA-MM-DD)" value={data} onChangeText={setData} placeholder="2027-08-22" />
       <TextField
         rotulo="Distância em km (opcional)"
         value={distanciaKm}
         onChangeText={setDistanciaKm}
-        placeholder="10"
-        keyboardType="numeric"
+        placeholder="42.2"
+        keyboardType="decimal-pad"
       />
+      <TextField rotulo="Meta de tempo (opcional)" value={meta} onChangeText={setMeta} placeholder="3:29:00" />
+      <View style={styles.chips}>
+        {opcoes.map((o) => (
+          <Chip key={o.valor} rotulo={o.rotulo} selecionado={vinculo === o.valor} onPress={() => setVinculo(o.valor)} />
+        ))}
+      </View>
       <View style={styles.acoes}>
         <Button titulo="Salvar" onPress={() => void salvar()} carregando={salvando} />
         <Button titulo="Cancelar" variante="secundaria" onPress={onCancelar} />
@@ -224,4 +270,7 @@ const styles = StyleSheet.create({
   resultado: { marginTop: espacamento.sm, color: cores.sucesso, fontWeight: '600' },
   formularioResultado: { marginTop: espacamento.sm },
   acoes: { flexDirection: 'row', gap: espacamento.sm, marginTop: espacamento.sm },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: espacamento.xs, marginTop: espacamento.sm },
+  secao: { ...tipografia.legendaForte, marginTop: espacamento.md, marginBottom: espacamento.sm },
+  adicionar: { marginBottom: espacamento.sm },
 });

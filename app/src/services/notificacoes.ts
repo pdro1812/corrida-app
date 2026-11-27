@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { formatarKm } from '../utils/formato';
-import { TreinoSemRpe } from './rpe';
+import { gravarRpeNotificados, lerRpeNotificados, separarParaNotificar, TreinoSemRpe } from './rpe';
 
 // v2: notificação local (nada passa por servidor) pedindo o RPE depois do
 // sync. Tocar nela abre a tela de avaliação do treino.
@@ -29,17 +29,40 @@ async function permitido(): Promise<boolean> {
   return (await Notifications.requestPermissionsAsync()).granted;
 }
 
+const idNotificacao = (treinoRealizadoId: string) => `rpe-${treinoRealizadoId}`;
+
+function textoDoTreino(t: TreinoSemRpe): string {
+  const [ano, mes, dia] = t.data.split('-').map(Number);
+  const semana = new Date(Date.UTC(ano, mes - 1, dia)).toLocaleDateString('pt-BR', { weekday: 'short', timeZone: 'UTC' });
+  const tipo = t.tipo ? ` · ${t.tipo.charAt(0).toUpperCase()}${t.tipo.slice(1)}` : '';
+  return `${semana.replace('.', '')} ${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}${tipo} · ${formatarKm(t.distanciaKm)}`;
+}
+
+// Uma notificação por treino sem RPE, só para os que ainda não foram
+// avisados. Tocar abre a avaliação daquele treino.
 export async function notificarRpePendente(treinos: TreinoSemRpe[]): Promise<void> {
-  if (Platform.OS === 'web' || treinos.length === 0 || !(await permitido())) return;
-  const [maisRecente] = treinos;
-  const corpo =
-    treinos.length === 1
-      ? `Como foi o treino de ${formatarKm(maisRecente.distanciaKm)}? Toque para registrar o esforço (0 a 10).`
-      : `${treinos.length} treinos esperando sua percepção de esforço (0 a 10).`;
-  await Notifications.scheduleNotificationAsync({
-    content: { title: 'Quanto custou?', body: corpo, data: { treinoRealizadoId: maisRecente.id } },
-    trigger: Platform.OS === 'android' ? { channelId: CANAL } : null,
-  });
+  if (Platform.OS === 'web') return;
+  const { novos, notificados } = separarParaNotificar(treinos, await lerRpeNotificados());
+  if (novos.length > 0 && (await permitido())) {
+    for (const treino of novos) {
+      await Notifications.scheduleNotificationAsync({
+        identifier: idNotificacao(treino.id),
+        content: {
+          title: 'Quanto custou?',
+          body: `${textoDoTreino(treino)}. Toque para registrar o esforço (0 a 10).`,
+          data: { treinoRealizadoId: treino.id },
+        },
+        trigger: Platform.OS === 'android' ? { channelId: CANAL } : null,
+      });
+    }
+  }
+  await gravarRpeNotificados(notificados);
+}
+
+// Depois de registrar o RPE, tira a notificação daquele treino da bandeja.
+export async function dispensarNotificacaoRpe(treinoRealizadoId: string): Promise<void> {
+  if (Platform.OS === 'web') return;
+  await Notifications.dismissNotificationAsync(idNotificacao(treinoRealizadoId)).catch(() => undefined);
 }
 
 // Chama `abrir` quando o usuário toca na notificação (inclusive se ela

@@ -244,6 +244,14 @@ describe('sincronização com a Garmin (fetch simulado)', () => {
     expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/token'))).toHaveLength(1);
   });
 
+  it('não importa de novo uma atividade excluída pelo usuário', async () => {
+    await sincronizarGarmin();
+    const { id } = (await banco.primeiro<{ id: string }>("SELECT id FROM treino_realizado WHERE garmin_activity_id = '111'"))!;
+    await excluirTreinoRealizado(id);
+    expect(await sincronizarGarmin()).toMatchObject({ atividadesImportadas: 0, atividadesJaExistentes: 1 });
+    expect(await banco.todos('SELECT id FROM treino_realizado')).toHaveLength(0);
+  });
+
   it('nunca lança: sem chave ou com a Garmin fora do ar devolve ok:false (RNF12)', async () => {
     await removerChaveGarmin();
     expect(await sincronizarGarmin()).toMatchObject({ ok: false, erro: expect.stringMatching(/Configure a chave/) });

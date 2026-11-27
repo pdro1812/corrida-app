@@ -28,9 +28,15 @@
       }
     },
     "plugins": [
-      ["expo-sqlite", { "useSQLCipher": true }],
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true
+        }
+      ],
       "expo-secure-store",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-background-task"
     ]
   }
 }

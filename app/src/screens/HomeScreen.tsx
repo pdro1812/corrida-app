@@ -3,23 +3,28 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CompositeScreenProps, useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
-import { HomeStackParamList, RootTabParamList } from '../types/navigation';
-import { Ciclo, Prova, Semana, provaAlvoDoCiclo } from '../types/modelo';
+import { AbasParamList, RootStackParamList } from '../types/navigation';
+import { Ciclo, Prova, Semana, TreinoPrevisto, provaAlvoDoCiclo } from '../types/modelo';
 import { buscarCicloAtivo } from '../services/ciclos';
 import { listarSemanasDoCiclo } from '../services/semanas';
+import { listarProvasSemCiclo } from '../services/provas';
+import { BlocoCiclo, listarBlocos } from '../services/blocosCiclo';
+import { blocoDaData, posicaoNoBloco, ROTULO_TIPO_BLOCO } from '../dominio/blocosCiclo';
 import { sincronizarGarmin } from '../services/sync';
 import { listarTreinosSemRpe, TreinoSemRpe } from '../services/rpe';
-import { formatarData, formatarKm } from '../utils/formato';
+import { formatarKm } from '../utils/formato';
 import {
-  agruparSemanasPorStatus,
   calcularAderenciaSemanaAtual,
   calcularContadorTreinos,
   calcularDiasAteProva,
-  calcularKmRealizadoDaSemana,
   calcularProgressoKm,
+  hojeLocal,
   semanaEhAtual,
-  semanaJaPassou,
+  treinosDoDia,
 } from '../utils/dashboard';
+import { LinhaSemana } from '../components/ListaSemanas';
+import { TipoTreinoBadge } from '../components/TipoTreinoBadge';
+import { CopiarPrevisto } from '../components/CopiarPrevisto';
 import { Screen } from '../components/Screen';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -29,8 +34,8 @@ import { LoadingState } from '../components/LoadingState';
 import { cores, espacamento, raio, tipografia } from '../theme/theme';
 
 type Props = CompositeScreenProps<
-  NativeStackScreenProps<HomeStackParamList, 'Home'>,
-  BottomTabScreenProps<RootTabParamList>
+  BottomTabScreenProps<AbasParamList, 'Hoje'>,
+  NativeStackScreenProps<RootStackParamList>
 >;
 
 interface Mensagem {
@@ -46,11 +51,14 @@ export function HomeScreen({ navigation }: Props) {
   const [ciclo, setCiclo] = useState<Ciclo | null>(null);
   const [semanas, setSemanas] = useState<Semana[]>([]);
   const [semRpe, setSemRpe] = useState<TreinoSemRpe[]>([]);
+  const [provasForaDoCiclo, setProvasForaDoCiclo] = useState<Prova[]>([]);
+  const [blocos, setBlocos] = useState<BlocoCiclo[]>([]);
 
   const carregarDados = useCallback(async () => {
     setCarregando(true);
     try {
       setSemRpe(await listarTreinosSemRpe());
+      setProvasForaDoCiclo(await listarProvasSemCiclo());
       const cicloAtivo = await buscarCicloAtivo();
       if (!cicloAtivo) {
         setCiclo(null);
@@ -58,6 +66,7 @@ export function HomeScreen({ navigation }: Props) {
         return;
       }
       const listaSemanas = await listarSemanasDoCiclo(cicloAtivo.id);
+      setBlocos(await listarBlocos(cicloAtivo.id));
       setCiclo(cicloAtivo);
       setSemanas(listaSemanas);
     } catch (erroCapturado) {
@@ -144,12 +153,6 @@ export function HomeScreen({ navigation }: Props) {
         carregando={sincronizando}
       />
 
-      <View style={styles.linksTopo}>
-        <Pressable onPress={() => navigation.navigate('HistoricoCiclos')}>
-          <Text style={styles.link}>Histórico de ciclos</Text>
-        </Pressable>
-      </View>
-
       {!ciclo ? (
         <>
           <EmptyState
@@ -161,106 +164,82 @@ export function HomeScreen({ navigation }: Props) {
         </>
       ) : (
         <>
-          <PainelCicloAtivo ciclo={ciclo} semanas={semanas} navigation={navigation} />
-          <ListaSemanas semanas={semanas} navigation={navigation} />
+          <TreinoDeHoje treinos={treinosDoDia(semanas, hojeLocal())} navigation={navigation} />
+          <PainelCicloAtivo ciclo={ciclo} semanas={semanas} blocos={blocos} provasDepois={provasForaDoCiclo} navigation={navigation} />
+          <SemanaAtual semanas={semanas} navigation={navigation} />
         </>
       )}
     </Screen>
   );
 }
 
-function ListaSemanas({
-  semanas,
-  navigation,
-}: {
-  semanas: Semana[];
-  navigation: Props['navigation'];
-}) {
-  if (semanas.length === 0) {
-    return (
-      <>
-        <Text style={styles.listaTitulo}>Semanas</Text>
-        <EmptyState titulo="Nenhuma semana cadastrada ainda" emoji="📅" />
-      </>
-    );
-  }
-
-  const { emAndamento, concluidas } = agruparSemanasPorStatus(semanas);
-
+// O que está previsto para hoje, com o botão de copiar para o Garmin.
+function TreinoDeHoje({ treinos, navigation }: { treinos: TreinoPrevisto[]; navigation: Props['navigation'] }) {
   return (
-    <>
-      <Text style={styles.listaTitulo}>Semanas</Text>
-      {emAndamento.map((semana) => (
-        <Pressable
-          key={semana.id}
-          onPress={() => navigation.navigate('Semana', { semanaId: semana.id })}
-        >
-          <LinhaSemana semana={semana} />
+    <Card style={styles.hoje}>
+      <Text style={tipografia.legendaForte}>Treino de hoje</Text>
+      {treinos.length === 0 ? <Text style={[tipografia.corpo, styles.hojeVazio]}>Nada previsto para hoje.</Text> : null}
+      {treinos.map((treino) => (
+        <Pressable key={treino.id} onPress={() => navigation.navigate('TreinoDetalhe', { treino })} style={styles.hojeItem}>
+          <View style={styles.hojeAcoes}>
+            <TipoTreinoBadge tipo={treino.tipo} />
+            <CopiarPrevisto descricao={treino.descricao} />
+          </View>
+          <Text style={tipografia.corpo}>{treino.descricao}</Text>
+          {treino.realizados.length > 0 ? <Text style={styles.hojeFeito}>✓ Realizado</Text> : null}
         </Pressable>
       ))}
+    </Card>
+  );
+}
 
-      {concluidas.length > 0 ? (
-        <>
-          <Text style={styles.listaTitulo}>Concluídas</Text>
-          {concluidas.map((semana) => (
-            <Pressable
-              key={semana.id}
-              onPress={() => navigation.navigate('Semana', { semanaId: semana.id })}
-            >
-              <LinhaSemana semana={semana} />
-            </Pressable>
-          ))}
-        </>
+function SemanaAtual({ semanas, navigation }: { semanas: Semana[]; navigation: Props['navigation'] }) {
+  const atual = semanas.find(semanaEhAtual);
+  return (
+    <>
+      {atual ? (
+        <Pressable onPress={() => navigation.navigate('Semana', { semanaId: atual.id })}>
+          <LinhaSemana semana={atual} />
+        </Pressable>
       ) : null}
+      <Pressable onPress={() => navigation.navigate('Abas', { screen: 'Ciclo' })}>
+        <Text style={styles.link}>Ver todas as semanas e provas</Text>
+      </Pressable>
     </>
   );
 }
 
-function LinhaSemana({ semana }: { semana: Semana }) {
-  const passou = semanaJaPassou(semana);
-  const atual = semanaEhAtual(semana);
-  const kmRealizado = calcularKmRealizadoDaSemana(semana);
-
+function BlocoAtual({ blocos }: { blocos: BlocoCiclo[] }) {
+  const hoje = hojeLocal();
+  const bloco = blocoDaData(blocos, hoje);
+  if (!bloco) return null;
+  const { atual, total } = posicaoNoBloco(bloco, hoje);
   return (
-    <Card
-      style={[
-        styles.linha,
-        passou && styles.linhaPassada,
-        atual && styles.linhaAtual,
-      ]}
-    >
-      <View style={styles.linhaConteudo}>
-        <View style={styles.linhaEsquerda}>
-          <View style={styles.linhaTitulo}>
-            <Text style={tipografia.corpoForte}>Semana {semana.numeroSemana}</Text>
-            <Text style={tipografia.legenda}>
-              {' '}
-              ({formatarData(semana.dataInicio)} - {formatarData(semana.dataFim)})
-            </Text>
-          </View>
-          {semana.fase ? <Text style={tipografia.legenda}>{semana.fase}</Text> : null}
-          {atual ? <Text style={styles.selo}>Semana atual</Text> : null}
-        </View>
-        <View style={styles.linhaDireita}>
-          <Text style={tipografia.corpoForte}>{formatarKm(kmRealizado)}</Text>
-          <Text style={tipografia.legenda}>de {formatarKm(semana.kmPlanejadoTotal)}</Text>
-        </View>
-      </View>
-    </Card>
+    <Text style={styles.blocoAtual}>
+      {bloco.nome}
+      {bloco.nome.includes(ROTULO_TIPO_BLOCO[bloco.tipo]) ? '' : ` · ${ROTULO_TIPO_BLOCO[bloco.tipo]}`} · semana {atual} de {total}
+    </Text>
   );
 }
 
 function PainelCicloAtivo({
   ciclo,
   semanas,
+  blocos,
+  provasDepois,
   navigation,
 }: {
   ciclo: Ciclo;
   semanas: Semana[];
+  blocos: BlocoCiclo[];
+  provasDepois: Prova[];
   navigation: Props['navigation'];
 }) {
   const provaAlvo = provaAlvoDoCiclo(ciclo);
-  const provasSecundarias = ciclo.provas.filter((prova) => prova.tipo === 'secundaria');
+  // Secundárias do ciclo e provas fora dele (ex.: o próximo objetivo).
+  const provasSecundarias = [...ciclo.provas.filter((prova) => prova.tipo === 'secundaria'), ...provasDepois].sort((a, b) =>
+    a.data.localeCompare(b.data),
+  );
   const dias = calcularDiasAteProva(provaAlvo?.data ?? null);
   const progresso = calcularProgressoKm(semanas);
   const aderencia = calcularAderenciaSemanaAtual(semanas);
@@ -276,6 +255,7 @@ function PainelCicloAtivo({
         <Text style={tipografia.titulo}>{ciclo.nome}</Text>
         {provaAlvo ? <Text style={tipografia.legenda}>{provaAlvo.nome}</Text> : null}
       </Pressable>
+      <BlocoAtual blocos={blocos} />
 
       {dias !== null ? (
         <View style={styles.contagemBloco}>
@@ -346,8 +326,7 @@ function ContagemProvaSecundaria({ prova }: { prova: Prova }) {
 }
 
 const styles = StyleSheet.create({
-  linksTopo: { alignItems: 'flex-end', marginTop: espacamento.sm },
-  link: { color: cores.primaria, fontWeight: '600', fontSize: 13 },
+  link: { color: cores.primaria, fontWeight: '600', fontSize: 13, textAlign: 'right', marginBottom: espacamento.lg },
   contagemBloco: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -375,17 +354,10 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: cores.borda,
   },
-  listaTitulo: { ...tipografia.legendaForte, marginBottom: espacamento.sm },
-  linha: { marginBottom: espacamento.sm },
-  linhaPassada: { backgroundColor: cores.sucessoFundo, borderColor: cores.sucesso },
-  linhaAtual: { borderColor: cores.primaria, borderWidth: 1.5 },
-  linhaConteudo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  linhaEsquerda: { flex: 1, gap: espacamento.xs / 2 },
-  linhaTitulo: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap' },
-  linhaDireita: { alignItems: 'flex-end' },
-  selo: {
-    ...tipografia.legendaForte,
-    color: cores.primaria,
-    marginTop: espacamento.xs / 2,
-  },
+  hoje: { marginTop: espacamento.md },
+  blocoAtual: { ...tipografia.legendaForte, color: cores.primaria, marginTop: espacamento.xs },
+  hojeVazio: { marginTop: espacamento.xs, color: cores.textoSecundario },
+  hojeItem: { marginTop: espacamento.sm, gap: espacamento.xs },
+  hojeAcoes: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  hojeFeito: { ...tipografia.legendaForte, color: cores.sucesso },
 });

@@ -2,14 +2,16 @@ import { useCallback, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { HomeStackParamList } from '../types/navigation';
+import { RootStackParamList } from '../types/navigation';
 import { Screen } from '../components/Screen';
 import { TextField } from '../components/TextField';
 import { Button } from '../components/Button';
 import { Banner } from '../components/Banner';
 import { LoadingState } from '../components/LoadingState';
 import { atualizarCiclo, buscarCiclo, criarCiclo, excluirCiclo } from '../services/ciclos';
-import { provaAlvoDoCiclo } from '../types/modelo';
+import { listarProvasSemCiclo } from '../services/provas';
+import { Chip } from '../components/Chip';
+import { Prova, provaAlvoDoCiclo } from '../types/modelo';
 import { formatarDuracao } from '../utils/formato';
 import { espacamento, tipografia } from '../theme/theme';
 
@@ -26,7 +28,7 @@ function paraSegundos(hms: string): number | undefined {
     : partes[0] * 60 + partes[1];
 }
 
-type Props = NativeStackScreenProps<HomeStackParamList, 'CriarEditarCiclo'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'CriarEditarCiclo'>;
 
 export function CriarEditarCicloScreen({ route, navigation }: Props) {
   const cicloId = route.params?.cicloId;
@@ -42,10 +44,26 @@ export function CriarEditarCicloScreen({ route, navigation }: Props) {
   const [provaData, setProvaData] = useState('');
   const [provaDistanciaKm, setProvaDistanciaKm] = useState('');
   const [provaMetaTempo, setProvaMetaTempo] = useState('');
+  // Ciclo novo: pode usar uma prova já cadastrada fora de ciclo como alvo.
+  const [provasLivres, setProvasLivres] = useState<Prova[]>([]);
+  const [provaAlvoId, setProvaAlvoId] = useState<string | undefined>(undefined);
+
+  function usarProva(prova: Prova) {
+    if (provaAlvoId === prova.id) {
+      setProvaAlvoId(undefined);
+      return;
+    }
+    setProvaAlvoId(prova.id);
+    setProvaNome(prova.nome);
+    setProvaData(prova.data.slice(0, 10));
+    setProvaDistanciaKm(prova.distanciaKm ? String(prova.distanciaKm) : '');
+    setProvaMetaTempo(prova.metaTempoSegundos ? formatarDuracao(prova.metaTempoSegundos) : '');
+  }
 
   useFocusEffect(
     useCallback(() => {
       if (!cicloId) {
+        void listarProvasSemCiclo().then(setProvasLivres);
         return;
       }
       let cancelado = false;
@@ -89,13 +107,14 @@ export function CriarEditarCicloScreen({ route, navigation }: Props) {
         provaData,
         provaDistanciaKm: provaDistanciaKm.trim() ? Number(provaDistanciaKm) : undefined,
         provaMetaTempoSegundos: paraSegundos(provaMetaTempo),
+        provaAlvoId,
       };
       if (editando) {
         await atualizarCiclo(cicloId, dados);
       } else {
         await criarCiclo(dados);
       }
-      navigation.navigate('Home');
+      navigation.navigate('Abas', { screen: 'Ciclo' });
     } catch (erroCapturado) {
       setErro(erroCapturado instanceof Error ? erroCapturado.message : 'Tente novamente');
     } finally {
@@ -111,7 +130,7 @@ export function CriarEditarCicloScreen({ route, navigation }: Props) {
         style: 'destructive',
         onPress: () => {
           void excluirCiclo(cicloId!)
-            .then(() => navigation.navigate('Home'))
+            .then(() => navigation.navigate('Abas', { screen: 'Ciclo' }))
             .catch((erroCapturado) => setErro(String(erroCapturado)));
         },
       },
@@ -141,6 +160,19 @@ export function CriarEditarCicloScreen({ route, navigation }: Props) {
       />
 
       <Text style={styles.secao}>Prova alvo</Text>
+      {!editando && provasLivres.length > 0 ? (
+        <View style={styles.chips}>
+          <Text style={tipografia.legenda}>Usar uma prova já cadastrada:</Text>
+          {provasLivres.map((prova) => (
+            <Chip
+              key={prova.id}
+              rotulo={`${prova.nome} (${prova.data.slice(0, 10)})`}
+              selecionado={provaAlvoId === prova.id}
+              onPress={() => usarProva(prova)}
+            />
+          ))}
+        </View>
+      ) : null}
       <TextField rotulo="Nome da prova" value={provaNome} onChangeText={setProvaNome} placeholder="Meia de Porto Alegre" />
       <TextField
         rotulo="Data da prova (AAAA-MM-DD)"
@@ -179,4 +211,5 @@ export function CriarEditarCicloScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   secao: { ...tipografia.legendaForte, marginTop: espacamento.md, marginBottom: espacamento.sm },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: espacamento.xs, alignItems: 'center', marginBottom: espacamento.sm },
 });

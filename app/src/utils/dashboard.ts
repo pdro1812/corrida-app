@@ -134,3 +134,15 @@ export function calcularAderenciaSemanaAtual(semanas: Semana[]): AderenciaSemana
 
   return { semana: semanaAtual, elegiveis: elegiveis.length, realizados: realizados.length };
 }
+
+// Data de hoje no fuso do aparelho (YYYY-MM-DD).
+export function hojeLocal(agora = new Date()): string {
+  const mes = String(agora.getMonth() + 1).padStart(2, '0');
+  const dia = String(agora.getDate()).padStart(2, '0');
+  return `${agora.getFullYear()}-${mes}-${dia}`;
+}
+
+// Treinos previstos para uma data (normalmente hoje), de qualquer semana.
+export function treinosDoDia(semanas: Semana[], data: string) {
+  return semanas.flatMap((s) => s.treinosPrevistos).filter((t) => t.data.slice(0, 10) === data);
+}

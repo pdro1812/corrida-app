@@ -182,6 +182,35 @@ const MIGRACOES: string[] = [
     criado_em TEXT NOT NULL
   );
   `,
+  // Atividades do Garmin excluídas pelo usuário (ex.: caminhada marcada
+  // como corrida). O sync pula esses IDs para não importar de novo.
+  `
+  CREATE TABLE atividade_ignorada (
+    garmin_activity_id TEXT PRIMARY KEY,
+    data TEXT,
+    ignorada_em TEXT NOT NULL
+  );
+  `,
+  // Blocos (mesociclos) do ciclo: Base, Desenvolvimento, Específico...
+  // As semanas entram no bloco pela data (dominio/blocosCiclo.ts).
+  `
+  CREATE TABLE bloco_ciclo (
+    id TEXT PRIMARY KEY,
+    ciclo_id TEXT NOT NULL REFERENCES ciclo(id) ON DELETE CASCADE,
+    ordem INTEGER NOT NULL,
+    nome TEXT NOT NULL,
+    tipo TEXT NOT NULL,
+    data_inicio TEXT NOT NULL,
+    data_fim TEXT NOT NULL,
+    objetivo TEXT,
+    criado_em TEXT NOT NULL
+  );
+  CREATE INDEX bloco_ciclo_ciclo ON bloco_ciclo(ciclo_id);
+  `,
+  // Recorde importado de uma atividade do Garmin (inteira ou melhor trecho).
+  `
+  ALTER TABLE recorde_pessoal ADD COLUMN garmin_activity_id TEXT;
+  `,
 ];
 
 export const VERSAO_ESQUEMA = MIGRACOES.length;
@@ -202,6 +231,7 @@ export const TABELAS_BACKUP: Record<string, readonly string[]> = {
   ciclo: ['id', 'nome', 'data_inicio', 'data_fim', 'status', 'criado_em'],
   importacao: ['id', 'ciclo_id', 'nome_arquivo', 'semanas_criadas', 'treinos_criados', 'linhas_com_erro', 'criado_em'],
   semana: ['id', 'ciclo_id', 'numero_semana', 'data_inicio', 'data_fim', 'fase', 'rotina_extra'],
+  bloco_ciclo: ['id', 'ciclo_id', 'ordem', 'nome', 'tipo', 'data_inicio', 'data_fim', 'objetivo', 'criado_em'],
   prova: [
     'id', 'ciclo_id', 'tipo', 'nome', 'data', 'distancia_km', 'meta_tempo_segundos',
     'resultado_tempo_segundos', 'resultado_pace', 'concluida',
@@ -226,7 +256,8 @@ export const TABELAS_BACKUP: Record<string, readonly string[]> = {
   treino_metricas: COLUNAS_TREINO_METRICAS,
   bem_estar_dia: ['data', 'fonte', 'json', 'buscado_em'],
   treino_analise: ['treino_realizado_id', 'versao', 'json', 'gerado_em'],
-  recorde_pessoal: ['id', 'distancia_km', 'tempo_segundos', 'data', 'descricao', 'criado_em'],
+  recorde_pessoal: ['id', 'distancia_km', 'tempo_segundos', 'data', 'descricao', 'criado_em', 'garmin_activity_id'],
+  atividade_ignorada: ['garmin_activity_id', 'data', 'ignorada_em'],
 };
 
 // Divide um bloco de migração em comandos — os drivers executam um por vez.

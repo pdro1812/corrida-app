@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { HomeStackParamList } from '../types/navigation';
+import { RootStackParamList } from '../types/navigation';
 import { formatarData, formatarKm } from '../utils/formato';
 import { agregarRealizados } from '../utils/comparacao';
 import { rotuloSensacao, SENSACOES_DISPONIVEIS } from '../utils/sensacoes';
@@ -14,9 +14,11 @@ import { TextField } from '../components/TextField';
 import { Chip } from '../components/Chip';
 import { Banner } from '../components/Banner';
 import { TipoTreinoBadge } from '../components/TipoTreinoBadge';
+import { CopiarPrevisto } from '../components/CopiarPrevisto';
+import { dispensarNotificacaoRpe } from '../services/notificacoes';
 import { espacamento, tipografia } from '../theme/theme';
 
-type Props = NativeStackScreenProps<HomeStackParamList, 'TreinoDetalhe'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'TreinoDetalhe'>;
 
 export function TreinoDetalheScreen({ route, navigation }: Props) {
   const { treino } = route.params;
@@ -54,8 +56,9 @@ export function TreinoDetalheScreen({ route, navigation }: Props) {
       <Text style={[tipografia.titulo, styles.capitalizado]}>
         {treino.diaSemana} · {formatarData(treino.data)}
       </Text>
-      <View style={styles.badge}>
+      <View style={[styles.badge, styles.acoes]}>
         <TipoTreinoBadge tipo={treino.tipo} />
+        <CopiarPrevisto descricao={treino.descricao} />
       </View>
       <Text style={[tipografia.corpo, styles.descricao]}>{treino.descricao}</Text>
       <Text style={tipografia.legenda}>
@@ -258,6 +261,7 @@ export function FormularioFeedback({
         sensacoes,
         feedbackTexto: texto.trim() || undefined,
       });
+      if (rpe !== null) void dispensarNotificacaoRpe(treinoRealizadoId);
       onSalvo();
     } catch (erroCapturado) {
       setErro(erroCapturado instanceof Error ? erroCapturado.message : 'Tente novamente');
@@ -320,6 +324,7 @@ export function FormularioFeedback({
 const styles = StyleSheet.create({
   capitalizado: { textTransform: 'capitalize' },
   badge: { marginTop: espacamento.sm },
+  acoes: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   descricao: { marginTop: espacamento.sm, marginBottom: espacamento.xs },
   secao: { marginTop: espacamento.lg },
   espacoTopo: { marginTop: espacamento.md },

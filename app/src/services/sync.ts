@@ -1,3 +1,4 @@
+import { melhorTrechoDoFit } from '../dominio/melhorTrecho';
 import { Banco, obterBanco } from '../db/banco';
 import {
   AtividadeGarmin,
@@ -92,6 +93,25 @@ async function getGarmin(caminho: string, accept = 'application/json'): Promise<
 async function buscarAtividadesRecentes(limite: number): Promise<AtividadeGarmin[]> {
   const resposta = await getGarmin(`/activitylist-service/activities/search/activities?start=0&limit=${limite}`);
   return (await resposta.json()) as AtividadeGarmin[];
+}
+
+// Corridas do Garmin num período (inclusive as nunca sincronizadas), para
+// importar recordes antigos. Datas AAAA-MM-DD validadas antes de ir na URL.
+export async function buscarCorridasNoPeriodo(inicio: string, fim: string): Promise<AtividadeGarmin[]> {
+  const data = /^\d{4}-\d{2}-\d{2}$/;
+  if (!data.test(inicio) || !data.test(fim)) throw new GarminError('Datas no formato AAAA-MM-DD');
+  const resposta = await getGarmin(
+    `/activitylist-service/activities/search/activities?startDate=${inicio}&endDate=${fim}&start=0&limit=200`,
+  );
+  return ((await resposta.json()) as AtividadeGarmin[]).filter(ehAtividadeDeCorrida);
+}
+
+// Melhor trecho de `metros` dentro de uma atividade (baixa o FIT dela).
+export async function melhorTrechoDaAtividade(garminActivityId: string, metros: number) {
+  if (!/^\d+$/.test(garminActivityId)) throw new GarminError('ID de atividade inválido');
+  const fit = await baixarFit(garminActivityId);
+  if (!fit) throw new GarminError('Não foi possível baixar o arquivo da atividade');
+  return melhorTrechoDoFit(fit, metros);
 }
 
 // Laps e métricas completas vêm do arquivo FIT original (a API não expõe
@@ -263,9 +283,10 @@ export async function sincronizarGarmin(limite = 20): Promise<ResultadoSincroniz
     const idsImportados: string[] = [];
 
     for (const atividade of atividades.filter(ehAtividadeDeCorrida)) {
-      const existe = await banco.primeiro('SELECT id FROM treino_realizado WHERE garmin_activity_id = ?', [
-        String(atividade.activityId),
-      ]);
+      const garminId = String(atividade.activityId);
+      const existe =
+        (await banco.primeiro('SELECT id FROM treino_realizado WHERE garmin_activity_id = ?', [garminId])) ??
+        (await banco.primeiro('SELECT garmin_activity_id FROM atividade_ignorada WHERE garmin_activity_id = ?', [garminId]));
       if (existe) {
         atividadesJaExistentes++;
         continue;
@@ -293,15 +314,6 @@ export async function sincronizarGarmin(limite = 20): Promise<ResultadoSincroniz
       erro instanceof GarminError ? erro.message : 'Não foi possível falar com a Garmin — verifique a internet';
     return { ok: false, ...vazio, erro: mensagem };
   }
-}
-
-// Substitui o antigo cron diário: ao abrir o app, sincroniza se a última
-// sincronização tiver mais de `horas` horas (e houver chave configurada).
-export async function sincronizarSeNecessario(horas = 12): Promise<ResultadoSincronizacao | null> {
-  if (!(await obterChaveGarmin())) return null;
-  const ultima = await lerConfiguracao(CONFIG_ULTIMA_SINCRONIZACAO);
-  if (ultima && Date.now() - Date.parse(ultima) < horas * 60 * 60 * 1000) return null;
-  return sincronizarGarmin();
 }
 
 export async function ultimaSincronizacao(): Promise<string | null> {
