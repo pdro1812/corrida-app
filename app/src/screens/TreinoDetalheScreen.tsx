@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { HomeStackParamList } from '../types/navigation';
+import { RootStackParamList } from '../types/navigation';
 import { formatarData, formatarKm } from '../utils/formato';
 import { agregarRealizados } from '../utils/comparacao';
 import { rotuloSensacao, SENSACOES_DISPONIVEIS } from '../utils/sensacoes';
@@ -18,7 +18,7 @@ import { CopiarPrevisto } from '../components/CopiarPrevisto';
 import { dispensarNotificacaoRpe } from '../services/notificacoes';
 import { espacamento, tipografia } from '../theme/theme';
 
-type Props = NativeStackScreenProps<HomeStackParamList, 'TreinoDetalhe'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'TreinoDetalhe'>;
 
 export function TreinoDetalheScreen({ route, navigation }: Props) {
   const { treino } = route.params;

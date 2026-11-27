@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { HomeStackParamList } from '../types/navigation';
+import { RootStackParamList } from '../types/navigation';
 import { TreinoRealizado } from '../types/modelo';
 import { buscarTreinoRealizado } from '../services/treinos';
 import { formatarData, formatarKm } from '../utils/formato';
@@ -12,7 +12,7 @@ import { LoadingState } from '../components/LoadingState';
 import { FormularioFeedback } from './TreinoDetalheScreen';
 import { espacamento, tipografia } from '../theme/theme';
 
-type Props = NativeStackScreenProps<HomeStackParamList, 'AvaliarTreino'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'AvaliarTreino'>;
 
 // v2: aberta pela notificação pós-sync (ou pelo aviso na Home) para
 // registrar o RPE de um treino recém-importado.

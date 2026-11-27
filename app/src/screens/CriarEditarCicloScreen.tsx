@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { HomeStackParamList } from '../types/navigation';
+import { RootStackParamList } from '../types/navigation';
 import { Screen } from '../components/Screen';
 import { TextField } from '../components/TextField';
 import { Button } from '../components/Button';
@@ -26,7 +26,7 @@ function paraSegundos(hms: string): number | undefined {
     : partes[0] * 60 + partes[1];
 }
 
-type Props = NativeStackScreenProps<HomeStackParamList, 'CriarEditarCiclo'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'CriarEditarCiclo'>;
 
 export function CriarEditarCicloScreen({ route, navigation }: Props) {
   const cicloId = route.params?.cicloId;
@@ -95,7 +95,7 @@ export function CriarEditarCicloScreen({ route, navigation }: Props) {
       } else {
         await criarCiclo(dados);
       }
-      navigation.navigate('Home');
+      navigation.navigate('Abas', { screen: 'Ciclo' });
     } catch (erroCapturado) {
       setErro(erroCapturado instanceof Error ? erroCapturado.message : 'Tente novamente');
     } finally {
@@ -111,7 +111,7 @@ export function CriarEditarCicloScreen({ route, navigation }: Props) {
         style: 'destructive',
         onPress: () => {
           void excluirCiclo(cicloId!)
-            .then(() => navigation.navigate('Home'))
+            .then(() => navigation.navigate('Abas', { screen: 'Ciclo' }))
             .catch((erroCapturado) => setErro(String(erroCapturado)));
         },
       },

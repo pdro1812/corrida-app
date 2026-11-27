@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { HomeStackParamList } from '../types/navigation';
+import { RootStackParamList } from '../types/navigation';
 import { Semana, TreinoPrevisto } from '../types/modelo';
 import { buscarSemana, excluirSemana } from '../services/semanas';
 import { formatarDuracao, formatarKm, formatarData } from '../utils/formato';
@@ -17,7 +17,7 @@ import { TipoTreinoBadge } from '../components/TipoTreinoBadge';
 import { CopiarPrevisto } from '../components/CopiarPrevisto';
 import { cores, espacamento, tipoTreino, tipografia } from '../theme/theme';
 
-type Props = NativeStackScreenProps<HomeStackParamList, 'Semana'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'Semana'>;
 
 export function SemanaScreen({ route, navigation }: Props) {
   const { semanaId } = route.params;

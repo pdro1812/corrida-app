@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
-import { RootTabParamList } from '../types/navigation';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../types/navigation';
 import { ArquivoTexto, escolherArquivoTexto } from '../services/arquivos';
 import { Ciclo } from '../types/modelo';
 import { Screen } from '../components/Screen';
@@ -21,7 +21,7 @@ import {
 } from '../services/import';
 import { cores, espacamento, tipografia } from '../theme/theme';
 
-type Props = BottomTabScreenProps<RootTabParamList, 'Importar'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'ImportarPlanilha'>;
 
 function formatarDataHora(iso: string): string {
   return new Date(iso).toLocaleString('pt-BR', {
@@ -172,7 +172,7 @@ export function ImportarPlanilhaScreen({ navigation }: Props) {
             </View>
           ) : null}
           <View style={styles.botaoImportar}>
-            <Button titulo="Ver na Home" variante="secundaria" onPress={() => navigation.navigate('HomeTab')} />
+            <Button titulo="Ver o ciclo" variante="secundaria" onPress={() => navigation.navigate('Abas', { screen: 'Ciclo' })} />
           </View>
         </Card>
       ) : null}

@@ -7,7 +7,6 @@ import { Button } from '../components/Button';
 import { Banner } from '../components/Banner';
 import { TextField } from '../components/TextField';
 import { Chip } from '../components/Chip';
-import { PerfilAnaliseCard } from '../components/PerfilAnaliseCard';
 import { gerarExportIa, lerLimiares, salvarLimiares } from '../services/exportIa';
 import { obterChaveGarmin, removerChaveGarmin, salvarChaveGarmin } from '../services/configuracoes';
 import { diagnosticarBemEstar, esquecerTokenGarmin, ultimaSincronizacao } from '../services/sync';
@@ -225,7 +224,6 @@ export function ConfiguracoesScreen() {
         </View>
       </Card>
 
-      <PerfilAnaliseCard onAviso={setMensagem} />
 
       <Card style={styles.card}>
         <Text style={tipografia.subtitulo}>Limiares e resumo rápido</Text>

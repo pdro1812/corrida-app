@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { HomeStackParamList } from '../types/navigation';
+import { RootStackParamList } from '../types/navigation';
 import { TreinoPrevisto } from '../types/modelo';
 import { buscarTreinoPrevisto } from '../services/treinos';
 import { paceParaSegundos } from '../utils/comparacao';
@@ -13,7 +13,7 @@ import { EmptyState } from '../components/EmptyState';
 import { LoadingState } from '../components/LoadingState';
 import { cores, espacamento, raio, tipografia } from '../theme/theme';
 
-type Props = NativeStackScreenProps<HomeStackParamList, 'TreinoTiro'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'TreinoTiro'>;
 
 export function TreinoTiroScreen({ route }: Props) {
   const { treinoId } = route.params;
