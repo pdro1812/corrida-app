@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+import { Pressable } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -15,6 +17,8 @@ import { HistoricoCiclosScreen } from './src/screens/HistoricoCiclosScreen';
 import { RegistrarTreinoManualScreen } from './src/screens/RegistrarTreinoManualScreen';
 import { AtividadesGarminScreen } from './src/screens/AtividadesGarminScreen';
 import { DiarioTreinosScreen } from './src/screens/DiarioTreinosScreen';
+import { ConfiguracoesScreen } from './src/screens/ConfiguracoesScreen';
+import { sincronizarSeNecessario } from './src/services/sync';
 import { cores } from './src/theme/theme';
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
@@ -30,7 +34,28 @@ const headerOptions = {
 function HomeStackNavigator() {
   return (
     <Stack.Navigator screenOptions={headerOptions}>
-      <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'Corrida App' }} />
+      <Stack.Screen
+        name="Home"
+        component={HomeScreen}
+        options={({ navigation }) => ({
+          title: 'Corrida App',
+          headerRight: () => (
+            <Pressable
+              onPress={() => navigation.navigate('Configuracoes')}
+              accessibilityRole="button"
+              accessibilityLabel="Configurações"
+              hitSlop={12}
+            >
+              <Ionicons name="settings-outline" size={22} color={cores.primaria} />
+            </Pressable>
+          ),
+        })}
+      />
+      <Stack.Screen
+        name="Configuracoes"
+        component={ConfiguracoesScreen}
+        options={{ title: 'Configurações' }}
+      />
       <Stack.Screen name="Semana" component={SemanaScreen} />
       <Stack.Screen
         name="TreinoDetalhe"
@@ -74,6 +99,13 @@ const ICONES_POR_ABA: Record<keyof RootTabParamList, { ativo: keyof typeof Ionic
 };
 
 export default function App() {
+  // Substitui o antigo cron diário do backend: ao abrir o app, sincroniza
+  // com a Garmin se a última sincronização tiver mais de 12h. Silencioso —
+  // o resultado aparece nas telas quando elas recarregam.
+  useEffect(() => {
+    void sincronizarSeNecessario().catch(() => undefined);
+  }, []);
+
   return (
     <NavigationContainer>
       <Tab.Navigator

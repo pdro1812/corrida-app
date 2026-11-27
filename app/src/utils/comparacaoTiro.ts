@@ -2,7 +2,7 @@ import {
   TreinoPrevisto,
   TreinoPrevistoIntervalo,
   TreinoRealizadoIntervalo,
-} from '../types/api';
+} from '../types/modelo';
 import { paceParaSegundos } from './comparacao';
 
 export interface RepeticaoComparada {
@@ -14,18 +14,19 @@ export interface RepeticaoComparada {
 }
 
 // RF22: casa cada tiro/trote previsto com o intervalo realizado
-// correspondente. O Garmin não distingue tiro de trote de recuperação no
-// campo `tipo` (ambos vêm como 'run' — só marca WARMUP/COOLDOWN de forma
-// confiável, nunca REST, mesmo quando a atividade claramente alterna
-// ritmo forte/fraco), então o `repeticaoNumero` do lado realizado é só
-// uma contagem sequencial de todos os laps 'run', não alinhada com o
-// `repeticaoNumero` do previsto (que numera só os tiros). A heurística
-// usada aqui: dentro da sequência de laps 'run' (excluindo aquecimento/
-// desaquecimento), eles alternam tiro/trote começando pelo tiro — testado
-// contra dados reais da conta (10x400m) e bateu 100% com os 10 tiros e 10
-// trotes esperados. Quando a atividade real tiver menos repetições que o
-// previsto (parou no meio, GPS falhou etc.), casamos por posição e o
-// restante fica "sem correspondência" em vez de esconder a repetição.
+// correspondente. Dois formatos de dado convivem no banco:
+// - Sync pela Garmin Personal API (nov/2026 em diante): os laps vêm do
+//   arquivo FIT, que marca o trote como `recovery` — tiro = laps 'run',
+//   trote = laps 'recovery', sem heurística.
+// - Sync antigo (endpoint JSON de splits, até out/2026): o Garmin nunca
+//   marcava REST, então tiro e trote chegavam ambos como 'run'. Para esses,
+//   a heurística é: dentro da sequência de laps 'run' (excluindo aquecimento/
+//   desaquecimento), eles alternam tiro/trote começando pelo tiro — testado
+//   contra dados reais da conta (10x400m) e bateu 100% com os 10 tiros e 10
+//   trotes esperados.
+// Quando a atividade real tiver menos repetições que o previsto (parou no
+// meio, GPS falhou etc.), casamos por posição e o restante fica "sem
+// correspondência" em vez de esconder a repetição.
 export function montarComparacaoTiros(treino: TreinoPrevisto): RepeticaoComparada[] {
   const tirosPrevistos = ordenarPorRepeticao(
     (treino.intervalos ?? []).filter((intervalo) => intervalo.tipo === 'tiro'),
@@ -37,13 +38,19 @@ export function montarComparacaoTiros(treino: TreinoPrevisto): RepeticaoComparad
   // Pode haver mais de um treino_realizado vinculado ao mesmo previsto
   // (ex: Garmin dividiu o treino em duas atividades) — junta os
   // intervalos de todos pra não perder repetições da segunda atividade.
-  const lapsCorrida = treino.realizados
+  const laps = treino.realizados
     .flatMap((realizado) => realizado.intervalos ?? [])
-    .filter((intervalo) => intervalo.tipo === 'run')
     .sort((a, b) => a.ordem - b.ordem);
+  const lapsCorrida = laps.filter((intervalo) => intervalo.tipo === 'run');
+  const lapsRecuperacao = laps.filter((intervalo) => intervalo.tipo === 'recovery');
 
-  const tirosRealizados = lapsCorrida.filter((_, indice) => indice % 2 === 0);
-  const trotesRealizados = lapsCorrida.filter((_, indice) => indice % 2 === 1);
+  const temTipoExplicito = lapsRecuperacao.length > 0;
+  const tirosRealizados = temTipoExplicito
+    ? lapsCorrida
+    : lapsCorrida.filter((_, indice) => indice % 2 === 0);
+  const trotesRealizados = temTipoExplicito
+    ? lapsRecuperacao
+    : lapsCorrida.filter((_, indice) => indice % 2 === 1);
 
   const totalRepeticoes = Math.max(tirosPrevistos.length, tirosRealizados.length);
   const linhas: RepeticaoComparada[] = [];

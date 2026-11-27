@@ -1,27 +1,36 @@
-name: App Build
+name: App CI
 on:
   push:
     branches: [main]
-    paths: ['app/**']
   pull_request:
-    paths: ['app/**']
   workflow_dispatch: {}
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 (histórico completo) — o gitleaks-action roda `git log`
+      # sobre o histórico local; com o clone raso padrão ele trata a árvore
+      # inteira como "adicionada" no commit atual e gera falso positivo.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Node 24: os testes usam o SQLite embutido (node:sqlite).
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run app:lint
       - run: npm run app:typecheck
+      - run: npm run app:test
+      - name: Scan de segredos vazados
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # TODO (Fase 1 — Fechamento da V1): habilitar o build real via EAS
-      # quando EXPO_TOKEN existir nos secrets do repositório.
+      # Build do APK via EAS fica manual (`cd app && npx eas build -p android
+      # --profile preview`). Para automatizar, criar o secret EXPO_TOKEN e:
       #
       # - name: EAS Build (Android APK)
       #   run: npx eas-cli build --platform android --profile preview --non-interactive

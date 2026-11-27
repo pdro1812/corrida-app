@@ -1,4 +1,4 @@
-import { TreinoPrevisto, TreinoRealizado } from '../types/api';
+import { TreinoPrevisto, TreinoRealizado } from '../types/modelo';
 
 export function paceParaSegundos(pace: string | null | undefined): number | null {
   if (!pace) {

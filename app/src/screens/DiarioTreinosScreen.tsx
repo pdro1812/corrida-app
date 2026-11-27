@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { TreinoRealizadoComPrevisto } from '../types/api';
+import { TreinoRealizadoComPrevisto } from '../types/modelo';
 import { Screen } from '../components/Screen';
 import { Card } from '../components/Card';
 import { Chip } from '../components/Chip';
@@ -10,6 +10,8 @@ import { EmptyState } from '../components/EmptyState';
 import { LoadingState } from '../components/LoadingState';
 import { listarTreinosRealizados } from '../services/treinosRealizados';
 import { calcularResumoRecente, corDoRpe } from '../utils/resumoTreinos';
+import { calcularVolumeSemanal } from '../utils/volumeSemanal';
+import { VolumeSemanalCard } from '../components/VolumeSemanalCard';
 import { rotuloSensacao } from '../utils/sensacoes';
 import { formatarData, formatarDuracao, formatarKm } from '../utils/formato';
 import { cores, espacamento, raio, tipografia } from '../theme/theme';
@@ -53,7 +55,12 @@ export function DiarioTreinosScreen() {
         data={treinos}
         keyExtractor={(treino) => treino.id}
         ListHeaderComponent={
-          treinos.length > 0 ? <ResumoRecenteCard resumo={resumo} /> : null
+          treinos.length > 0 ? (
+            <>
+              <VolumeSemanalCard semanas={calcularVolumeSemanal(treinos)} />
+              <ResumoRecenteCard resumo={resumo} />
+            </>
+          ) : null
         }
         renderItem={({ item }) => <LinhaTreino treino={item} />}
         ListEmptyComponent={

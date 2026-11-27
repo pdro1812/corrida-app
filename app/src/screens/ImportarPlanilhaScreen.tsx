@@ -1,10 +1,10 @@
 import { useCallback, useState } from 'react';
-import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
-import * as DocumentPicker from 'expo-document-picker';
 import { RootTabParamList } from '../types/navigation';
-import { Ciclo } from '../types/api';
+import { ArquivoTexto, escolherArquivoTexto } from '../services/arquivos';
+import { Ciclo } from '../types/modelo';
 import { Screen } from '../components/Screen';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -36,11 +36,7 @@ export function ImportarPlanilhaScreen({ navigation }: Props) {
   const [carregando, setCarregando] = useState(true);
   const [ciclo, setCiclo] = useState<Ciclo | null>(null);
   const [importacoes, setImportacoes] = useState<Importacao[]>([]);
-  const [arquivoNome, setArquivoNome] = useState<string | null>(null);
-  const [arquivoAsset, setArquivoAsset] = useState<DocumentPicker.DocumentPickerAsset | null>(
-    null,
-  );
-  const [arquivoWeb, setArquivoWeb] = useState<File | null>(null);
+  const [arquivo, setArquivo] = useState<ArquivoTexto | null>(null);
   const [importando, setImportando] = useState(false);
   const [resultado, setResultado] = useState<ResultadoImportacao | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -65,37 +61,29 @@ export function ImportarPlanilhaScreen({ navigation }: Props) {
   );
 
   async function escolherArquivo() {
-    const resposta = await DocumentPicker.getDocumentAsync({
-      type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel', '*/*'],
-      copyToCacheDirectory: true,
-    });
-    if (resposta.canceled || resposta.assets.length === 0) {
-      return;
+    try {
+      const escolhido = await escolherArquivoTexto([
+        'text/csv',
+        'text/comma-separated-values',
+        'application/vnd.ms-excel',
+        'text/plain',
+      ]);
+      if (!escolhido) return;
+      setArquivo(escolhido);
+      setResultado(null);
+    } catch (erroCapturado) {
+      setErro(erroCapturado instanceof Error ? erroCapturado.message : String(erroCapturado));
     }
-    setArquivoAsset(resposta.assets[0]);
-    setArquivoWeb(resposta.output?.[0] ?? null);
-    setArquivoNome(resposta.assets[0].name);
-    setResultado(null);
   }
 
   async function importar() {
-    if (!arquivoAsset || !ciclo) {
+    if (!arquivo || !ciclo) {
       return;
     }
     setImportando(true);
     setErro(null);
     try {
-      const formData = new FormData();
-      if (Platform.OS === 'web' && arquivoWeb) {
-        formData.append('file', arquivoWeb, arquivoAsset.name);
-      } else {
-        formData.append('file', {
-          uri: arquivoAsset.uri,
-          name: arquivoAsset.name,
-          type: arquivoAsset.mimeType ?? 'text/csv',
-        } as unknown as Blob);
-      }
-      const resultadoImportacao = await importarPlanilha(ciclo.id, formData);
+      const resultadoImportacao = await importarPlanilha(ciclo.id, arquivo.conteudo, arquivo.nome);
       setResultado(resultadoImportacao);
       await carregar();
     } catch (erroCapturado) {
@@ -147,17 +135,17 @@ export function ImportarPlanilhaScreen({ navigation }: Props) {
       {erro ? <Banner tipo="erro" titulo="Erro" mensagem={erro} onFechar={() => setErro(null)} /> : null}
       <Text style={[tipografia.corpo, styles.instrucoes]}>
         Escolha o CSV no formato &quot;longo&quot; (uma linha por treino) descrito em{' '}
-        docs/ARCHITECTURE.md §4: semana, data, dia_semana, fase, tipo, descricao,
+        docs/ARCHITECTURE.md: semana, data, dia_semana, fase, tipo, descricao,
         distancia_alvo_km, pace_alvo_min, pace_alvo_max.
       </Text>
 
       <Button
-        titulo={arquivoNome ?? 'Escolher arquivo CSV'}
+        titulo={arquivo?.nome ?? 'Escolher arquivo CSV'}
         variante="secundaria"
         onPress={() => void escolherArquivo()}
       />
 
-      {arquivoAsset ? (
+      {arquivo ? (
         <View style={styles.botaoImportar}>
           <Button titulo="Importar" onPress={() => void importar()} carregando={importando} />
         </View>

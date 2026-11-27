@@ -6,22 +6,14 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal",
-      "env": {
-        "DATABASE_URL": "postgresql://dummy:dummy@localhost:5432/dummy"
-      }
+      "distribution": "internal"
     },
     "preview": {
       "distribution": "internal",
-      "env": {
-        "DATABASE_URL": "postgresql://dummy:dummy@localhost:5432/dummy"
-      }
+      "android": { "buildType": "apk" }
     },
     "production": {
-      "autoIncrement": true,
-      "env": {
-        "DATABASE_URL": "postgresql://dummy:dummy@localhost:5432/dummy"
-      }
+      "autoIncrement": true
     }
   },
   "submit": {

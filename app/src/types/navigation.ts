@@ -1,4 +1,4 @@
-import { TreinoPrevisto } from './api';
+import { TreinoPrevisto } from './modelo';
 
 // Fluxo de navegação da aba Home — telas de detalhe/edição que partem
 // do dashboard e do ciclo ativo.
@@ -10,6 +10,7 @@ export type HomeStackParamList = {
   CriarEditarCiclo: { cicloId?: string };
   HistoricoCiclos: undefined;
   RegistrarTreinoManual: { semanaId: string; treinoPrevistoId?: string };
+  Configuracoes: undefined;
 };
 
 // Abas fixas na parte inferior (padrão "barra do Instagram"). Provas,

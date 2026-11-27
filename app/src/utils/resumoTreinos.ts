@@ -1,4 +1,4 @@
-import { TreinoRealizadoComPrevisto } from '../types/api';
+import { TreinoRealizadoComPrevisto } from '../types/modelo';
 
 export interface ResumoRecente {
   quantidade: number;
@@ -8,7 +8,7 @@ export interface ResumoRecente {
 }
 
 // Resumo dos N treinos mais recentes (a lista já vem ordenada por data
-// desc do backend) — usado no topo do Diário de Treinos como um "como eu
+// desc por services/treinosRealizados.ts) — usado no topo do Diário de Treinos como um "como eu
 // estou indo ultimamente" rápido de ler.
 export function calcularResumoRecente(
   treinos: TreinoRealizadoComPrevisto[],

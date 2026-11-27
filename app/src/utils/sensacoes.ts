@@ -1,5 +1,5 @@
 // Lista inicial de tags de sensação — ponto de partida, não travada como
-// enum no backend (ver docs/DATA_MODEL.md). Fácil de estender aqui sem
+// enum no banco (ver docs/DATA_MODEL.md). Fácil de estender aqui sem
 // precisar de migration.
 export const SENSACOES_DISPONIVEIS = [
   'bem_encaixado',
