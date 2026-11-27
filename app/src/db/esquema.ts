@@ -170,6 +170,18 @@ const MIGRACOES: string[] = [
     gerado_em TEXT NOT NULL
   );
   `,
+  // Recordes pessoais (melhores tempos por distância), para o perfil do
+  // banco de análise. Independentes de ciclo.
+  `
+  CREATE TABLE recorde_pessoal (
+    id TEXT PRIMARY KEY,
+    distancia_km REAL NOT NULL,
+    tempo_segundos INTEGER NOT NULL,
+    data TEXT,
+    descricao TEXT,
+    criado_em TEXT NOT NULL
+  );
+  `,
 ];
 
 export const VERSAO_ESQUEMA = MIGRACOES.length;
@@ -214,6 +226,7 @@ export const TABELAS_BACKUP: Record<string, readonly string[]> = {
   treino_metricas: COLUNAS_TREINO_METRICAS,
   bem_estar_dia: ['data', 'fonte', 'json', 'buscado_em'],
   treino_analise: ['treino_realizado_id', 'versao', 'json', 'gerado_em'],
+  recorde_pessoal: ['id', 'distancia_km', 'tempo_segundos', 'data', 'descricao', 'criado_em'],
 };
 
 // Divide um bloco de migração em comandos — os drivers executam um por vez.

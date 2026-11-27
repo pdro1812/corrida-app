@@ -7,6 +7,7 @@ import { Button } from '../components/Button';
 import { Banner } from '../components/Banner';
 import { TextField } from '../components/TextField';
 import { Chip } from '../components/Chip';
+import { PerfilAnaliseCard } from '../components/PerfilAnaliseCard';
 import { gerarExportIa, lerLimiares, salvarLimiares } from '../services/exportIa';
 import { obterChaveGarmin, removerChaveGarmin, salvarChaveGarmin } from '../services/configuracoes';
 import { diagnosticarBemEstar, esquecerTokenGarmin, ultimaSincronizacao } from '../services/sync';
@@ -224,12 +225,13 @@ export function ConfiguracoesScreen() {
         </View>
       </Card>
 
+      <PerfilAnaliseCard onAviso={setMensagem} />
+
       <Card style={styles.card}>
-        <Text style={tipografia.subtitulo}>Exportar para o Claude</Text>
+        <Text style={tipografia.subtitulo}>Limiares e resumo rápido</Text>
         <Text style={[tipografia.legenda, styles.texto]}>
-          Gera o prompt de análise + um JSON em grafo por dia (recuperação, treino proposto e executado por bloco),
-          com medianas e percentis em vez de mínimo/máximo e o que não foi planejado separado. Pronto para colar
-          numa conversa com o Claude. Não inclui localização nem a chave da Garmin.
+          Os limiares definem as zonas de FC e de pace no banco de análise e no resumo. O resumo rápido gera o
+          prompt + um JSON do período escolhido para colar direto numa conversa (melhor para poucas semanas).
         </Text>
         <View style={styles.chips}>
           <View style={styles.campoLimiar}>
@@ -257,9 +259,6 @@ export function ConfiguracoesScreen() {
           onPress={() => void gravarLimiares()}
           carregando={ocupado === 'limiar'}
         />
-        <Text style={[tipografia.legenda, styles.texto]}>
-          Os limiares definem as zonas de FC e de pace do export. Sem eles, as zonas ficam de fora.
-        </Text>
         <View style={styles.chips}>
           {PERIODOS_EXPORT.map((p) => (
             <Chip
