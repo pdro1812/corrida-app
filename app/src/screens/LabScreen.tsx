@@ -143,7 +143,7 @@ export function LabScreen() {
 
       <Button titulo="Mandar para o Claude (8 semanas)" onPress={() => void exportar()} carregando={exportando} />
       <Text style={[tipografia.legenda, styles.rodape]}>
-        Outros períodos e salvar como arquivo: Configurações → Exportar para o Claude.
+        Histórico completo (.db): aba Recordes e export. Outros períodos do resumo: Configurações → Limiares e resumo rápido.
       </Text>
     </Screen>
   );
