@@ -309,10 +309,23 @@ const fmtProva = (p: ProvaEntrada) => {
 
 export function montarPerfil(e: EntradaAnalise): string {
   const { fcLimiar, paceLimiarS } = e.atleta;
-  const alvo = e.provas.find((p) => p.tipo === 'alvo' && !p.concluida) ?? e.provas.find((p) => p.tipo === 'alvo');
+  const cicloAtivo = e.ciclos.find((c) => c.status === 'ativo');
+  const alvo =
+    e.provas.find((p) => p.tipo === 'alvo' && !p.concluida && cicloAtivo && p.ciclo === cicloAtivo.nome) ??
+    e.provas.find((p) => p.tipo === 'alvo' && !p.concluida) ??
+    e.provas.find((p) => p.tipo === 'alvo');
   const proximas = e.provas.filter((p) => p !== alvo && p.data >= e.fim && !p.concluida);
   const feitas = e.provas.filter((p) => p.concluida);
-  const cicloAtivo = e.ciclos.find((c) => c.status === 'ativo');
+  // Provas futuras com a relação com a prova alvo: antes dela (preparatória)
+  // ou depois (próximo objetivo, que pesa no taper e na recuperação).
+  const fmtProxima = (p: ProvaEntrada) => {
+    const extras = [p.tipo === 'alvo' ? 'alvo de outro ciclo' : p.ciclo ? `secundária do ciclo ${p.ciclo}` : 'sem ciclo'];
+    if (alvo) {
+      const semanas = Math.round((Date.parse(p.data) - Date.parse(alvo.data)) / (7 * 86400000));
+      if (semanas !== 0) extras.push(`${Math.abs(semanas)} semana(s) ${semanas > 0 ? 'depois' : 'antes'} da prova alvo`);
+    }
+    return `${fmtProva(p)} (${extras.join(', ')})`;
+  };
   const semanaAtual = e.semanas.find((s) => s.dataInicio <= e.fim && s.dataFim >= e.fim);
   const linhas = [`# Perfil do atleta (gerado em ${e.geradoEm.slice(0, 10)})`, ''];
   if (alvo) {
@@ -331,7 +344,7 @@ export function montarPerfil(e: EntradaAnalise): string {
   linhas.push(
     `**Limiar:** ${fcLimiar ? `FC ${fcLimiar} bpm` : 'FC não configurada'} · ${paceLimiarS ? `pace ${paceTexto(paceLimiarS)}/km` : 'pace não configurado'}`,
   );
-  if (proximas.length) linhas.push('', '## Próximas provas', ...proximas.map(fmtProva));
+  if (proximas.length) linhas.push('', '## Próximas provas', ...proximas.map(fmtProxima));
   if (e.recordes.length) {
     linhas.push('', '## Recordes pessoais');
     for (const r of [...e.recordes].sort((a, b) => a.distanciaKm - b.distanciaKm)) {

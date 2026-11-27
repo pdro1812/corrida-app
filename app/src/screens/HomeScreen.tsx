@@ -7,6 +7,7 @@ import { AbasParamList, RootStackParamList } from '../types/navigation';
 import { Ciclo, Prova, Semana, TreinoPrevisto, provaAlvoDoCiclo } from '../types/modelo';
 import { buscarCicloAtivo } from '../services/ciclos';
 import { listarSemanasDoCiclo } from '../services/semanas';
+import { listarProvasSemCiclo } from '../services/provas';
 import { sincronizarGarmin } from '../services/sync';
 import { listarTreinosSemRpe, TreinoSemRpe } from '../services/rpe';
 import { formatarKm } from '../utils/formato';
@@ -48,11 +49,13 @@ export function HomeScreen({ navigation }: Props) {
   const [ciclo, setCiclo] = useState<Ciclo | null>(null);
   const [semanas, setSemanas] = useState<Semana[]>([]);
   const [semRpe, setSemRpe] = useState<TreinoSemRpe[]>([]);
+  const [provasForaDoCiclo, setProvasForaDoCiclo] = useState<Prova[]>([]);
 
   const carregarDados = useCallback(async () => {
     setCarregando(true);
     try {
       setSemRpe(await listarTreinosSemRpe());
+      setProvasForaDoCiclo(await listarProvasSemCiclo());
       const cicloAtivo = await buscarCicloAtivo();
       if (!cicloAtivo) {
         setCiclo(null);
@@ -158,7 +161,7 @@ export function HomeScreen({ navigation }: Props) {
       ) : (
         <>
           <TreinoDeHoje treinos={treinosDoDia(semanas, hojeLocal())} navigation={navigation} />
-          <PainelCicloAtivo ciclo={ciclo} semanas={semanas} navigation={navigation} />
+          <PainelCicloAtivo ciclo={ciclo} semanas={semanas} provasDepois={provasForaDoCiclo} navigation={navigation} />
           <SemanaAtual semanas={semanas} navigation={navigation} />
         </>
       )}
@@ -205,14 +208,19 @@ function SemanaAtual({ semanas, navigation }: { semanas: Semana[]; navigation: P
 function PainelCicloAtivo({
   ciclo,
   semanas,
+  provasDepois,
   navigation,
 }: {
   ciclo: Ciclo;
   semanas: Semana[];
+  provasDepois: Prova[];
   navigation: Props['navigation'];
 }) {
   const provaAlvo = provaAlvoDoCiclo(ciclo);
-  const provasSecundarias = ciclo.provas.filter((prova) => prova.tipo === 'secundaria');
+  // Secundárias do ciclo e provas fora dele (ex.: o próximo objetivo).
+  const provasSecundarias = [...ciclo.provas.filter((prova) => prova.tipo === 'secundaria'), ...provasDepois].sort((a, b) =>
+    a.data.localeCompare(b.data),
+  );
   const dias = calcularDiasAteProva(provaAlvo?.data ?? null);
   const progresso = calcularProgressoKm(semanas);
   const aderencia = calcularAderenciaSemanaAtual(semanas);
