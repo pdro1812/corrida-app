@@ -211,6 +211,11 @@ const MIGRACOES: string[] = [
   `
   ALTER TABLE recorde_pessoal ADD COLUMN garmin_activity_id TEXT;
   `,
+  // Previsto usado para dividir o treino em blocos (aq / principal / volta).
+  // Se o vínculo com o previsto mudar, a análise é refeita.
+  `
+  ALTER TABLE treino_analise ADD COLUMN previsto_id TEXT;
+  `,
 ];
 
 export const VERSAO_ESQUEMA = MIGRACOES.length;
@@ -255,7 +260,7 @@ export const TABELAS_BACKUP: Record<string, readonly string[]> = {
   ],
   treino_metricas: COLUNAS_TREINO_METRICAS,
   bem_estar_dia: ['data', 'fonte', 'json', 'buscado_em'],
-  treino_analise: ['treino_realizado_id', 'versao', 'json', 'gerado_em'],
+  treino_analise: ['treino_realizado_id', 'versao', 'json', 'gerado_em', 'previsto_id'],
   recorde_pessoal: ['id', 'distancia_km', 'tempo_segundos', 'data', 'descricao', 'criado_em', 'garmin_activity_id'],
   atividade_ignorada: ['garmin_activity_id', 'data', 'ignorada_em'],
 };

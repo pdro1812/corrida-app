@@ -130,13 +130,19 @@ async function baixarFit(activityId: number | string): Promise<Uint8Array | null
   }
 }
 
-function lerFit(fit: Uint8Array | null) {
+interface PrevistoDaAnalise {
+  id: string;
+  descricao: string;
+}
+
+function lerFit(fit: Uint8Array | null, previsto: PrevistoDaAnalise | null = null) {
   const vazio = { laps: [], metricas: null, analise: null };
   if (!fit) return vazio;
   try {
     let analise: AnaliseTreino | null = null;
     try {
-      analise = extrairAnaliseDoFit(fit);
+      analise = extrairAnaliseDoFit(fit, previsto?.descricao);
+      if (analise) analise.previstoId = previsto?.id ?? null;
     } catch {
       // análise por blocos é opcional: não pode impedir laps e métricas
     }
@@ -148,7 +154,10 @@ function lerFit(fit: Uint8Array | null) {
 
 async function importarAtividade(banco: Banco, atividade: AtividadeGarmin): Promise<string> {
   const dados = mapearAtividade(atividade);
-  const { laps, metricas, analise } = lerFit(await baixarFit(atividade.activityId));
+  // O mesmo previsto que casarPendentesComPrevisto vai escolher: a análise
+  // já sai dividida pelo previsto e não precisa ser refeita depois.
+  const previsto = await previstoMaisProximo(banco, dados.data);
+  const { laps, metricas, analise } = lerFit(await baixarFit(atividade.activityId), previsto);
   const intervalos = (atividade.lapCount ?? 0) > 1 ? mapearLapsParaIntervalos(laps) : [];
   const id = novoId();
   await banco.transacao(async () => {
@@ -189,20 +198,24 @@ async function importarAtividade(banco: Banco, atividade: AtividadeGarmin): Prom
     }
     if (metricas) await gravarMetricasFit(banco, id, metricas);
     // FIT lido sem amostras: grava análise vazia para não baixar de novo.
-    if (metricas || analise) await gravarAnalise(banco, id, analise ?? analiseVazia());
+    if (metricas || analise) await gravarAnalise(banco, id, analise ?? { ...analiseVazia(), previstoId: previsto?.id ?? null });
   });
   return id;
 }
 
 // v2: treinos importados antes das métricas completas (ou da análise por
 // blocos) ganham o FIT lido de novo.
-async function completarMetricasAntigas(banco: Banco, limite = 10): Promise<number> {
+async function completarMetricasAntigas(banco: Banco, limite = 25): Promise<number> {
   let completados = 0;
   for (const treino of await treinosSemMetricas(banco, limite)) {
-    const { metricas, analise } = lerFit(await baixarFit(treino.garmin_activity_id));
+    const previsto =
+      treino.treino_previsto_id && treino.descricao_prevista !== null
+        ? { id: treino.treino_previsto_id, descricao: treino.descricao_prevista }
+        : null;
+    const { metricas, analise } = lerFit(await baixarFit(treino.garmin_activity_id), previsto);
     if (!metricas && !analise) continue;
     if (metricas) await gravarMetricasFit(banco, treino.id, metricas);
-    await gravarAnalise(banco, treino.id, analise ?? analiseVazia());
+    await gravarAnalise(banco, treino.id, analise ?? { ...analiseVazia(), previstoId: treino.treino_previsto_id });
     completados++;
   }
   return completados;
@@ -247,20 +260,26 @@ const diasEntre = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(
 // mesma data (± 1 dia). Um previsto pode acumular mais de um realizado
 // (ex: o Garmin dividiu o treino em duas atividades). Vínculos manuais
 // nunca são desfeitos — só mexe em realizado sem vínculo.
+export async function previstoMaisProximo(banco: Banco, data: string): Promise<PrevistoDaAnalise | null> {
+  const candidatos = await banco.todos<{ id: string; data: string; descricao: string }>(
+    'SELECT id, data, descricao FROM treino_previsto WHERE data BETWEEN ? AND ? ORDER BY data, id',
+    [somarDias(data, -1), somarDias(data, 1)],
+  );
+  if (candidatos.length === 0) return null;
+  const maisProximo = candidatos.reduce((melhor, atual) =>
+    diasEntre(atual.data, data) < diasEntre(melhor.data, data) ? atual : melhor,
+  );
+  return { id: maisProximo.id, descricao: maisProximo.descricao };
+}
+
 export async function casarPendentesComPrevisto(banco: Banco): Promise<number> {
   const pendentes = await banco.todos<{ id: string; data: string }>(
     'SELECT id, data FROM treino_realizado WHERE treino_previsto_id IS NULL',
   );
   let casados = 0;
   for (const realizado of pendentes) {
-    const candidatos = await banco.todos<{ id: string; data: string }>(
-      'SELECT id, data FROM treino_previsto WHERE data BETWEEN ? AND ?',
-      [somarDias(realizado.data, -1), somarDias(realizado.data, 1)],
-    );
-    if (candidatos.length === 0) continue;
-    const maisProximo = candidatos.reduce((melhor, atual) =>
-      diasEntre(atual.data, realizado.data) < diasEntre(melhor.data, realizado.data) ? atual : melhor,
-    );
+    const maisProximo = await previstoMaisProximo(banco, realizado.data);
+    if (!maisProximo) continue;
     await banco.transacao(async () => {
       await banco.executar('UPDATE treino_realizado SET treino_previsto_id = ? WHERE id = ?', [maisProximo.id, realizado.id]);
       await banco.executar("UPDATE treino_previsto SET status = 'realizado' WHERE id = ?", [maisProximo.id]);

@@ -1,4 +1,5 @@
 import { Decoder, LapMesg, RecordMesg, Stream } from '@garmin/fitsdk';
+import { dividirPeloPrevisto, parseEstruturaPrevisto, SegmentoPrevisto } from './estruturaPrevisto';
 
 // Export para IA: resume a série segundo a segundo do FIT em blocos
 // (aquecimento, tiros, trotes, contínuo, desaquecimento) com métricas
@@ -7,7 +8,8 @@ import { Decoder, LapMesg, RecordMesg, Stream } from '@garmin/fitsdk';
 // "extra". Guarda também a distribuição de FC e de pace (histogramas), para
 // as zonas serem calculadas no export com o limiar atual. Lógica pura.
 
-export const VERSAO_ANALISE = 1;
+// 2: divisão pelo previsto quando o relógio só tem auto-lap.
+export const VERSAO_ANALISE = 2;
 
 export interface AmostraCompleta {
   t: number; // segundos desde o início da atividade
@@ -58,8 +60,14 @@ export interface TrechoExtra {
   onde: string;
 }
 
+// De onde saíram os blocos: voltas do relógio (treino estruturado ou botão
+// de volta), texto do previsto, ou nenhuma divisão (um bloco contínuo).
+export type DivisaoBlocos = 'laps' | 'previsto' | 'nenhuma';
+
 export interface AnaliseTreino {
   versao: number;
+  divisao?: DivisaoBlocos;
+  previstoId?: string | null; // previsto usado na divisão (reprocessa se o vínculo mudar)
   blocos: BlocoAnalisado[];
   seg: Segmento[];
   extras: TrechoExtra[];
@@ -69,6 +77,7 @@ export interface AnaliseTreino {
 
 export const analiseVazia = (): AnaliseTreino => ({
   versao: VERSAO_ANALISE,
+  divisao: 'nenhuma',
   blocos: [],
   seg: [],
   extras: [],
@@ -326,7 +335,11 @@ function segmentosPorKm(amostras: (AmostraCompleta & { dt: number })[], janelas:
   return seg;
 }
 
-export function analisarAtividade(amostrasBrutas: AmostraCompleta[], laps: LapTempo[]): AnaliseTreino | null {
+export function analisarAtividade(
+  amostrasBrutas: AmostraCompleta[],
+  laps: LapTempo[],
+  estrutura?: SegmentoPrevisto[] | null,
+): AnaliseTreino | null {
   const ordenadas = [...amostrasBrutas].sort((a, b) => a.t - b.t);
   if (ordenadas.length < 30) return null;
   const limpas = limparFc(ordenadas);
@@ -336,6 +349,15 @@ export function analisarAtividade(amostrasBrutas: AmostraCompleta[], laps: LapTe
   const fim = amostras[amostras.length - 1].t + 1;
 
   let janelas = montarJanelas(laps, inicio, fim);
+  let divisao: DivisaoBlocos = janelas.length > 1 ? 'laps' : 'nenhuma';
+  // Relógio sem voltas de estrutura (auto-lap por km): divide pelo previsto.
+  if (divisao === 'nenhuma' && estrutura) {
+    const pelaEstrutura = dividirPeloPrevisto(amostras, estrutura);
+    if (pelaEstrutura) {
+      janelas = pelaEstrutura;
+      divisao = 'previsto';
+    }
+  }
   const extras: TrechoExtra[] = [];
   const extraDe = (j: Janela, onde: string) => {
     const doTrecho = amostras.filter((a) => a.t >= j.inicio && a.t < j.fim);
@@ -384,6 +406,7 @@ export function analisarAtividade(amostrasBrutas: AmostraCompleta[], laps: LapTe
 
   return {
     versao: VERSAO_ANALISE,
+    divisao,
     blocos,
     seg: segmentosPorKm(amostras, janelas),
     extras,
@@ -439,12 +462,12 @@ export function lapsComTempo(laps: LapMesg[], zero: number): LapTempo[] {
     .filter((l) => l.fim > l.inicio);
 }
 
-export function extrairAnaliseDoFit(fit: Uint8Array): AnaliseTreino | null {
+export function extrairAnaliseDoFit(fit: Uint8Array, descricaoPrevista?: string | null): AnaliseTreino | null {
   const { messages, errors } = new Decoder(Stream.fromBuffer(fit)).read();
   if (errors.length > 0) throw new Error(`Arquivo FIT inválido: ${String(errors[0])}`);
   const { amostras, zero } = amostrasCompletasDosRecords(messages.recordMesgs ?? []);
   if (zero === null) return null;
   const laps = lapsComTempo(messages.lapMesgs ?? [], zero);
   // Uma volta só = sem estrutura: trata como contínuo.
-  return analisarAtividade(amostras, laps.length > 1 ? laps : []);
+  return analisarAtividade(amostras, laps.length > 1 ? laps : [], parseEstruturaPrevisto(descricaoPrevista));
 }
