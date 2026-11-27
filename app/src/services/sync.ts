@@ -10,7 +10,7 @@ import {
 } from '../dominio/garmin';
 import { extrairMetricasDoFit, MetricasFit } from '../dominio/metricasFit';
 import { AnaliseTreino, analiseVazia, extrairAnaliseDoFit } from '../dominio/blocosFit';
-import { completarClimaPendente, gravarAnalise, gravarMetricasFit, treinosSemMetricas } from './metricas';
+import { completarCarga, completarClimaPendente, gravarAnalise, gravarMetricasFit, treinosSemMetricas } from './metricas';
 import { sincronizarBemEstar } from './bemEstar';
 import { descreverEstrutura, FONTES_BEM_ESTAR } from '../dominio/bemEstar';
 import { ResultadoSincronizacao } from '../types/modelo';
@@ -221,6 +221,24 @@ async function completarMetricasAntigas(banco: Banco, limite = 25): Promise<numb
   return completados;
 }
 
+// Uma vez: carga dos treinos antigos (fora das últimas atividades), pela
+// lista de atividades do período desde o primeiro treino.
+const CONFIG_CARGA_HISTORICA = 'carga_historica_buscada';
+async function completarCargaHistorica(banco: Banco): Promise<number> {
+  if (await lerConfiguracao(CONFIG_CARGA_HISTORICA)) return 0;
+  const faltando = await banco.primeiro<{ inicio: string | null; fim: string | null }>(
+    `SELECT min(r.data) AS inicio, max(r.data) AS fim FROM treino_realizado r
+       JOIN treino_metricas m ON m.treino_realizado_id = r.id
+      WHERE r.garmin_activity_id IS NOT NULL AND m.carga_treino IS NULL`,
+  );
+  let completados = 0;
+  if (faltando?.inicio && faltando.fim) {
+    completados = await completarCarga(banco, await buscarCorridasNoPeriodo(faltando.inicio, faltando.fim));
+  }
+  await gravarConfiguracao(CONFIG_CARGA_HISTORICA, agoraIso());
+  return completados;
+}
+
 async function buscarJsonGarmin(caminho: string): Promise<unknown> {
   return (await getGarmin(caminho)).json();
 }
@@ -317,6 +335,8 @@ export async function sincronizarGarmin(limite = 20): Promise<ResultadoSincroniz
     const treinosCasadosComPrevisto = await casarPendentesComPrevisto(banco);
     // Etapas da v2: não podem derrubar o sync principal.
     await completarMetricasAntigas(banco).catch(() => 0);
+    await completarCarga(banco, atividades).catch(() => 0);
+    await completarCargaHistorica(banco).catch(() => 0);
     await completarClimaPendente(banco, buscarJsonClima).catch(() => 0);
     await sincronizarBemEstar(banco, buscarJsonGarmin).catch(() => ({}));
     await gravarConfiguracao(CONFIG_ULTIMA_SINCRONIZACAO, agoraIso());

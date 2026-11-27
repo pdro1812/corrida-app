@@ -41,7 +41,8 @@ export async function gravarMetricasFit(banco: Banco, treinoRealizadoId: string,
     `INSERT INTO treino_metricas (${colunas.join(', ')}) VALUES (${colunas.map(() => '?').join(', ')})
      ON CONFLICT(treino_realizado_id) DO UPDATE SET ${colunas
        .filter((c) => c !== 'treino_realizado_id')
-       .map((c) => `${c} = excluded.${c}`)
+       // A carga pode ter vindo da lista de atividades (FIT sem o campo).
+       .map((c) => (c === 'carga_treino' ? `${c} = coalesce(excluded.${c}, ${c})` : `${c} = excluded.${c}`))
        .join(', ')}`,
     colunas.map((c) => valores[c] ?? null),
   );
@@ -100,6 +101,32 @@ export async function gravarAnalise(banco: Banco, treinoRealizadoId: string, ana
        gerado_em = excluded.gerado_em, previsto_id = excluded.previsto_id`,
     [treinoRealizadoId, analise.versao, JSON.stringify(analise), agoraIso(), analise.previstoId ?? null],
   );
+}
+
+// Carga de treino da lista de atividades da Garmin (activityTrainingLoad),
+// para quando o FIT não traz o campo. Só preenche o que está vazio.
+export async function completarCarga(
+  banco: Banco,
+  atividades: { activityId: number | string; activityTrainingLoad?: number }[],
+): Promise<number> {
+  let completados = 0;
+  for (const a of atividades) {
+    const carga = a.activityTrainingLoad;
+    if (typeof carga !== 'number' || !Number.isFinite(carga) || carga <= 0) continue;
+    const alvo = await banco.primeiro<{ id: string }>(
+      `SELECT m.treino_realizado_id AS id FROM treino_metricas m
+         JOIN treino_realizado r ON r.id = m.treino_realizado_id
+        WHERE r.garmin_activity_id = ? AND m.carga_treino IS NULL`,
+      [String(a.activityId)],
+    );
+    if (!alvo) continue;
+    await banco.executar('UPDATE treino_metricas SET carga_treino = ? WHERE treino_realizado_id = ?', [
+      Math.round(carga),
+      alvo.id,
+    ]);
+    completados++;
+  }
+  return completados;
 }
 
 // Busca o clima dos treinos com coordenada e hora ainda não consultados.

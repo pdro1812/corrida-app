@@ -72,13 +72,17 @@ export function PerfilAnaliseCard({ onAviso }: { onAviso: (aviso: Aviso) => void
   async function exportarBanco() {
     setOcupado('db');
     try {
-      const { bytes, resumo } = await gerarArquivoAnalise();
+      const { bytes, resumo, pendentes } = await gerarArquivoAnalise();
       const nome = `corrida-analise-${new Date().toISOString().slice(0, 10)}.db`;
       if (await salvarBytesNoCelular(nome, bytes, 'application/vnd.sqlite3')) {
         onAviso({
           tipo: 'sucesso',
           titulo: `Banco salvo: ${nome}`,
-          mensagem: `${resumo.treinos} treino(s), ${resumo.dias} dia(s) de recuperação, ${resumo.blocos} bloco(s).`,
+          mensagem:
+            `${resumo.treinos} treino(s), ${resumo.dias} dia(s) de recuperação, ${resumo.blocos} bloco(s).` +
+            (pendentes > 0
+              ? ` Ainda faltam ${pendentes} treino(s) para analisar: sincronize de novo e gere outro arquivo.`
+              : ''),
         });
       }
     } catch (erro) {

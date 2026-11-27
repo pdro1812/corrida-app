@@ -2,6 +2,7 @@ import { Banco, obterBanco } from '../db/banco';
 import { EntradaAnalise, ESQUEMA_ANALISE, montarTabelasAnalise, TABELAS_ANALISE } from '../dominio/bancoAnalise';
 import { gravarConfiguracao, lerConfiguracao } from './configuracoes';
 import { montarEntradaExport } from './exportIa';
+import { treinosSemMetricas } from './metricas';
 import { listarRecordes } from './recordes';
 
 // Banco de análise: um SQLite à parte, sem criptografia, só com dados de
@@ -120,10 +121,18 @@ export async function escreverBancoAnalise(destino: Banco, entrada: EntradaAnali
   return { treinos: tabelas.treino.linhas.length, dias: tabelas.dia.linhas.length, blocos: tabelas.bloco.linhas.length };
 }
 
+// Treinos da Garmin cuja análise ainda vai ser (re)feita nos próximos syncs
+// (o FIT é baixado aos poucos, 25 por sync).
+export async function contarTreinosSemAnalise(): Promise<number> {
+  return (await treinosSemMetricas(await obterBanco(), 100_000)).length;
+}
+
 // No aparelho: cria o arquivo SQLite sem criptografia (nenhuma chave é
 // aplicada), grava, fecha e devolve os bytes. O arquivo temporário é
 // apagado antes e depois.
-export async function gerarArquivoAnalise(agora = new Date()): Promise<{ bytes: Uint8Array; resumo: ResumoAnalise }> {
+export async function gerarArquivoAnalise(
+  agora = new Date(),
+): Promise<{ bytes: Uint8Array; resumo: ResumoAnalise; pendentes: number }> {
   const SQLite = await import('expo-sqlite');
   const { File } = await import('expo-file-system');
   const entrada = await montarEntradaAnalise(agora);
@@ -149,5 +158,5 @@ export async function gerarArquivoAnalise(agora = new Date()): Promise<{ bytes: 
   const arquivo = new File(`${pasta.startsWith('file://') ? pasta : `file://${pasta}`}/${ARQUIVO_ANALISE}`);
   const bytes = await arquivo.bytes();
   await SQLite.deleteDatabaseAsync(ARQUIVO_ANALISE).catch(() => undefined);
-  return { bytes, resumo };
+  return { bytes, resumo, pendentes: await contarTreinosSemAnalise() };
 }
