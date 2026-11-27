@@ -7,7 +7,8 @@ import { Button } from '../components/Button';
 import { Banner } from '../components/Banner';
 import { TextField } from '../components/TextField';
 import { Chip } from '../components/Chip';
-import { gerarExportIa } from '../services/exportIa';
+import { PerfilAnaliseCard } from '../components/PerfilAnaliseCard';
+import { gerarExportIa, lerLimiares, salvarLimiares } from '../services/exportIa';
 import { obterChaveGarmin, removerChaveGarmin, salvarChaveGarmin } from '../services/configuracoes';
 import { diagnosticarBemEstar, esquecerTokenGarmin, ultimaSincronizacao } from '../services/sync';
 import { escolherArquivoTexto, salvarBackupNoCelular, salvarTextoNoCelular } from '../services/arquivos';
@@ -33,13 +34,18 @@ export function ConfiguracoesScreen() {
   const [temChave, setTemChave] = useState(false);
   const [novaChave, setNovaChave] = useState('');
   const [ultimaSync, setUltimaSync] = useState<string | null>(null);
-  const [ocupado, setOcupado] = useState<'chave' | 'exportar' | 'restaurar' | 'ia' | 'diagnostico' | null>(null);
+  const [ocupado, setOcupado] = useState<'chave' | 'exportar' | 'restaurar' | 'ia' | 'diagnostico' | 'limiar' | null>(null);
+  const [fcLimiar, setFcLimiar] = useState('');
+  const [paceLimiar, setPaceLimiar] = useState('');
   const [semanasExport, setSemanasExport] = useState<number | null>(8);
   const [mensagem, setMensagem] = useState<Mensagem | null>(null);
 
   const carregar = useCallback(async () => {
     setTemChave(Boolean(await obterChaveGarmin()));
     setUltimaSync(await ultimaSincronizacao());
+    const limiares = await lerLimiares();
+    setFcLimiar(limiares.fcLimiar ? String(limiares.fcLimiar) : '');
+    setPaceLimiar(limiares.paceLimiar ?? '');
   }, []);
 
   useFocusEffect(
@@ -89,6 +95,19 @@ export function ConfiguracoesScreen() {
       }
     } catch (erro) {
       setMensagem({ tipo: 'erro', titulo: 'Não foi possível salvar o backup', mensagem: mensagemDeErro(erro) });
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  async function gravarLimiares() {
+    setOcupado('limiar');
+    setMensagem(null);
+    try {
+      await salvarLimiares(fcLimiar, paceLimiar);
+      setMensagem({ tipo: 'sucesso', titulo: 'Limiares salvos' });
+    } catch (erro) {
+      setMensagem({ tipo: 'erro', titulo: 'Não foi possível salvar os limiares', mensagem: mensagemDeErro(erro) });
     } finally {
       setOcupado(null);
     }
@@ -206,12 +225,40 @@ export function ConfiguracoesScreen() {
         </View>
       </Card>
 
+      <PerfilAnaliseCard onAviso={setMensagem} />
+
       <Card style={styles.card}>
-        <Text style={tipografia.subtitulo}>Exportar para o Claude</Text>
+        <Text style={tipografia.subtitulo}>Limiares e resumo rápido</Text>
         <Text style={[tipografia.legenda, styles.texto]}>
-          Gera um resumo compacto (Markdown) com treinos, plano, métricas do relógio, clima, RPE e custo de esforço,
-          pronto para colar numa conversa com o Claude. Não inclui localização nem a chave da Garmin.
+          Os limiares definem as zonas de FC e de pace no banco de análise e no resumo. O resumo rápido gera o
+          prompt + um JSON do período escolhido para colar direto numa conversa (melhor para poucas semanas).
         </Text>
+        <View style={styles.chips}>
+          <View style={styles.campoLimiar}>
+            <TextField
+              rotulo="FC de limiar (bpm)"
+              value={fcLimiar}
+              onChangeText={setFcLimiar}
+              keyboardType="number-pad"
+              placeholder="ex: 172"
+            />
+          </View>
+          <View style={styles.campoLimiar}>
+            <TextField
+              rotulo="Pace de limiar (/km)"
+              value={paceLimiar}
+              onChangeText={setPaceLimiar}
+              keyboardType="numbers-and-punctuation"
+              placeholder="ex: 4:50"
+            />
+          </View>
+        </View>
+        <Button
+          titulo="Salvar limiares"
+          variante="secundaria"
+          onPress={() => void gravarLimiares()}
+          carregando={ocupado === 'limiar'}
+        />
         <View style={styles.chips}>
           {PERIODOS_EXPORT.map((p) => (
             <Chip
@@ -257,4 +304,5 @@ const styles = StyleSheet.create({
   texto: { marginTop: espacamento.xs, marginBottom: espacamento.sm },
   botoes: { gap: espacamento.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: espacamento.sm, marginBottom: espacamento.sm },
+  campoLimiar: { flexGrow: 1, flexBasis: 140 },
 });

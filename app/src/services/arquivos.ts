@@ -43,3 +43,15 @@ export async function salvarBackupNoCelular(): Promise<{ nome: string; resumo: R
   pasta.createFile(nome, 'application/json').write(JSON.stringify(backup));
   return { nome, resumo: resumirBackup(backup) };
 }
+
+// Grava um arquivo binário (ex: o banco de análise) na pasta escolhida.
+export async function salvarBytesNoCelular(nome: string, bytes: Uint8Array, mimeType: string): Promise<boolean> {
+  let pasta: Directory;
+  try {
+    pasta = await Directory.pickDirectoryAsync();
+  } catch {
+    return false; // seletor cancelado
+  }
+  pasta.createFile(nome, mimeType).write(bytes);
+  return true;
+}

@@ -2,6 +2,7 @@ import { Banco, obterBanco } from '../db/banco';
 import { COLUNAS_TREINO_METRICAS } from '../db/esquema';
 import { arredondarCoordenada, ClimaTreino, horaDeReferencia, lerClima, montarUrlClima } from '../dominio/clima';
 import { MetricasFit } from '../dominio/metricasFit';
+import { AnaliseTreino, VERSAO_ANALISE } from '../dominio/blocosFit';
 import { agoraIso } from './linhas';
 
 // v2: grava e completa treino_metricas (FIT completo + clima). As funções
@@ -69,14 +70,26 @@ export async function gravarClima(banco: Banco, treinoRealizadoId: string, clima
 }
 
 // Treinos da Garmin importados antes da v2 (ou cujo FIT falhou) ainda sem
-// métricas. Limite por sync para não martelar a API.
+// métricas ou sem a análise por blocos na versão atual. Limite por sync
+// para não martelar a API.
 export async function treinosSemMetricas(banco: Banco, limite: number) {
   return banco.todos<{ id: string; garmin_activity_id: string }>(
     `SELECT r.id, r.garmin_activity_id FROM treino_realizado r
        LEFT JOIN treino_metricas m ON m.treino_realizado_id = r.id
-      WHERE r.garmin_activity_id IS NOT NULL AND m.treino_realizado_id IS NULL
+       LEFT JOIN treino_analise a ON a.treino_realizado_id = r.id
+      WHERE r.garmin_activity_id IS NOT NULL
+        AND (m.treino_realizado_id IS NULL OR a.treino_realizado_id IS NULL OR a.versao < ?)
       ORDER BY r.data DESC LIMIT ?`,
-    [limite],
+    [VERSAO_ANALISE, limite],
+  );
+}
+
+export async function gravarAnalise(banco: Banco, treinoRealizadoId: string, analise: AnaliseTreino): Promise<void> {
+  await banco.executar(
+    `INSERT INTO treino_analise (treino_realizado_id, versao, json, gerado_em) VALUES (?, ?, ?, ?)
+     ON CONFLICT(treino_realizado_id) DO UPDATE SET versao = excluded.versao, json = excluded.json,
+       gerado_em = excluded.gerado_em`,
+    [treinoRealizadoId, analise.versao, JSON.stringify(analise), agoraIso()],
   );
 }
 
